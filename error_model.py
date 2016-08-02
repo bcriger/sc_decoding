@@ -7,38 +7,52 @@ class PauliErrorModel(object):
     """
     Small, dense Pauli Error Model. 
 
-    Wraps an array and a list.
+    Wraps an array and a list of lists.
 
     The array must be flat with 4**n real entries for n the length of
-    the list `qs`. These entries must sum to 1 to within tolerance TOL
-    (list to 10**-14 by default).
+    each entry in `q_lsts`. These entries must sum to 1 to within
+    tolerance TOL (set to 10**-14 by default).
     
-    All the list has to do is cast to a list.
-
+    All the list has to do is cast to a list, and have equal-length
+    elements.
     """
-    def __init__(self, p_arr, qs, check=True):
+
+    def __init__(self, p_arr, q_lsts, check=True):
+        
+        #upcast if q_lsts is not nested
+        if not hasattr(q_lsts[0], '__iter__'):
+                q_lsts = [q_lsts]
+        
         if check:
             p_arr = array_cast(p_arr)
             prob_sum_check(p_arr)
-            
-            if type(qs) is set:
-                raise TypeError("THOU SHALT NOT USE UN-ORDERED TYPES FOR "
-                    "QUBIT LISTS")
+            for lst in q_lsts:
+                if type(lst) is set:
+                    raise TypeError("THOU SHALT NOT USE UN-ORDERED "
+                        "TYPES FOR QUBIT LISTS")
 
             try: 
-                qs = list(qs)
+                q_lsts = list(q_lsts)
             except Exception as err:
-                raise TypeError("Input list of qubits ({}) "
-                    "does not cast to list.  ".format(qs) + 
+                raise TypeError("Input list of qubit lists ({}) "
+                    "does not cast to list.  ".format(q_lsts) + 
                     "Error: " + err.strerror)
             
-            if len(p_arr) != 4 ** len(qs):
+            test_len = len(q_lsts[0])
+            
+            for lst in q_lsts:
+                if len(lst) != test_len:
+                    raise ValueError("All supports must be equal in"
+                        " size. {} and {} have different "
+                        "lengths.".format(q_lsts[0], lst)) 
+
+            if len(p_arr) != 4 ** test_len:
                 raise ValueError("Number of qubits inconsistent. Qubit "
-                    "labels imply {} qubit(s), but".format(len(qs)) + 
+                    "labels imply {} qubit(s), but".format(len(q_lsts)) + 
                     " there are {} probabilities.".format(len(p_arr)))
 
         self.p_arr = p_arr
-        self.qs = qs
+        self.q_lsts = q_lsts
 
     def sample(self):
         """
@@ -48,8 +62,10 @@ class PauliErrorModel(object):
         I use int_sample to get an index from the array p_arr, then
         convert to a sparse_pauli using int_to_pauli. 
         """
-        indx = int_sample(self.p_arr)
-        return int_to_pauli(indx, self.qs)
+        indxs = [int_sample(self.p_arr) for _ in self.q_lsts]
+        return map(lambda args: int_to_pauli(*args),
+                                zip(indxs, self.q_lsts))
+
 
 class NoisyClifford(object):
     """
