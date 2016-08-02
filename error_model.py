@@ -132,3 +132,11 @@ def prob_sum_check(p_arr):
         raise ValueError("Input probabilities must sum to" + 
             " unity. \n    Input: {}".format(p_arr) + 
             "\n    Difference: {}".format(delta))
+
+def f_p_sample(faults_probs):
+    """
+    In order to generate a metric, we first produce a list of faults 
+    that can occur at every timestep, along with the probability that
+    they do. 
+    """
+    pass
