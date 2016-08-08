@@ -19,7 +19,7 @@ class Sim2D(object):
         self.layout = SCLayout(d)
         self.error_model = em.PauliErrorModel([(1. - p)**2,
             p * (1. - p), p * (1. - p), p**2], 
-            [[_] for _ in self.layout.datas])
+            [[self.layout.map[_]] for _ in self.layout.datas])
 
     def random_error(self):
         return product(self.error_model.sample())
@@ -30,49 +30,71 @@ class Sim2D(object):
         
         for ltr, lst in zip('xz', [x_synd, z_synd]):
             for idx, stab in self.layout.stabilisers()[ltr].items():
-                if com(error, stab) == 1:
+                if error.com(stab) == 1:
                     lst.append(idx)
 
         return x_synd, z_synd
 
-    def graph(syndrome):
+    def graph(self, syndrome):
         """
         returns a NetworkX graph from a given syndrome, on which you 
         can find the MAXIMUM weight perfect matching (This is what
         NetworkX does). We use negative edge weights to make this 
         happen.
         """
-        crds = lambda idx: self.layout.map[:idx] #ugliness
+        crds = self.layout.map.inv 
         g = nx.Graph()
         
         #vertices directly from syndrome
         g.add_nodes_from(syndrome)
         g.add_weighted_edges_from(
-            (v1, v2, -pair_dist(crds(v1), crds(v2))) for v1, v2 in 
+            (v1, v2, -pair_dist(crds[v1], crds[v2]))
+            for v1, v2 in 
             it.combinations(syndrome, 2)
             )
         
         #boundary vertices, edges from boundary distance
-        
+        for s in syndrome:
+            g.add_edge(s, (s, 'b'),
+                        weight=-self.bdy_dist(crds[s])[0],
+                        close_pt=self.bdy_dist(crds[s])[1])
         
         #weight-0 edges between boundary vertices
+        g.add_weighted_edges_from(
+            ((v1, 'b'), (v2, 'b'), 0.)
+            for v1, v2 in 
+            it.combinations(syndrome, 2)
+            )
         return g
 
-    def correction(graph):
+    def correction(self, graph):
         """
         Given a syndrome graph with negative edge weights, finds the
         maximum-weight perfect matching and produces a
         sparse_pauli.Pauli 
         """
-        x = lambda idx: self.layout.map[:idx] #ugliness
+        x = self.layout.map.inv
         matching = nx.max_weight_matching(graph, maxcardinality=True)
+        
         # get rid of non-digraph duplicates 
-        matching = [(k, v) for k, v in matching.items() if k < l]
-        correction = product(path_pauli(x(k), x(v), layout.anc_type(k))
-                                for k, v in matching)
-        return correction
+        matching = [(n1, n2) for n1, n2 in matching.items() if n1 < n2]
+        
+        pauli_lst = []
+        for n1, n2 in matching:
+            if isinstance(n1, int) & isinstance(n2, int):
+                pauli_lst.append(self.path_pauli(x[n1], x[n2],
+                                            self.layout.anc_type(n1)))
+            elif isinstance(n1, int) ^ isinstance(n2, int):
+                bdy_pt = g[n1][n2]['close_pt']
+                vert = n1 if isinstance(n1, int) else n2
+                pauli_lst.append(path_pauli(bdy_pt, x[vert],
+                                            self.layout.anc_type(vert)))
+            else:
+                pass #both boundary points, no correction
+
+        return product(pauli_lst)
     
-    def logical_error(error, x_corr, z_corr):
+    def logical_error(self, error, x_corr, z_corr):
         """
         Given an error and a correction, multiplies them and returns a
         single letter recording the resulting logical error (may be I,
@@ -87,11 +109,40 @@ class Sim2D(object):
         one of the two acceptable corner vertices, depending on 
         syndrome type (X or Z). 
         """
-        return min(pair_dist(crd, pt) for pt in self.boundary_points())
+        min_dist = 4 * self.d #any impossibly large value will do
+
+        for pt in self.layout.boundary_points():
+            new_dist = pair_dist(crd, pt)
+            if new_dist < min_dist:
+                min_dist, close_pt = new_dist, pt
+
+        return min_dist, close_pt
+
+    def path_pauli(self, crd_0, crd_1, anc_type):
+        """
+        Returns a minimum-length Pauli between two ancillas, given the
+        type of STABILISER that they measure.
+
+        This function is awkward, because it works implicitly on the
+        un-rotated surface code, first finding a "corner" (a place on
+        the lattice for the path to turn 90 degrees), then producing
+        two diagonal paths on the rotated lattice that go to and from
+        this corner. 
+        """
+        a, b, c, d = crd_0[0], crd_0[1], crd_1[0], crd_1[1]
+        vs = [((d-b-c+a)/2, (b+d-c-a)/2),
+                                (-(d-b+c-a)/2, -(-b-d-c-a)/2)]
+        
+        if vs[0] in sum(self.layout.ancillas.values(), ()):
+            mid_vert = vs[0]
+        else:
+            mid_vert = vs[1]
+        
+        return map(self.layout.map, path_0 + path_1)
 
 
 #-----------------------convenience functions-------------------------#
-product = lambda itrbl: return reduce(mul, itrbl)
+product = lambda itrbl: reduce(mul, itrbl)
 
 
 def pair_dist(crd_0, crd_1):
@@ -107,26 +158,8 @@ def pair_dist(crd_0, crd_1):
     """
     diff = map(abs, (crd_0[0] - crd_1[0], crd_0[0] - crd_1[0]))
     diag_dist = min(diff)
-    remainder = max([diff[0] - diag_dist[0], diff[1] - diag_dist[1]])
+    remainder = max([diff[0] - diag_dist, diff[1] - diag_dist])
     return diag_dist / 2 + remainder
-
-def path_pauli(crd_0, crd_1, anc_type):
-    """
-    Returns a minimum-length Pauli between two ancillas, given the type
-    of STABILISER that they measure. 
-    """
-    diff = map(abs, (crd_0[0] - crd_1[0], crd_0[0] - crd_1[0]))
-    diag_dist = min(diff)
-    remainder = max([diff[0] - diag_dist[0], diff[1] - diag_dist[1]])
-    # sort syndromes left-right
-    crd_0, crd_1 = sorted([crd_0, crd_1], key = lambda x: x[0])
-
-    h_shft = (2, 0)
-    #decide whether to go up or down
-
-    pass
-
-
 
 #---------------------------------------------------------------------#
 
