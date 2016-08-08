@@ -24,7 +24,7 @@ class Sim2D(object):
     def random_error(self):
         return product(self.error_model.sample())
     
-    def syndrome(self, error):
+    def syndromes(self, error):
         x_synd = []
         z_synd = []
         
@@ -44,11 +44,18 @@ class Sim2D(object):
         """
         crds = lambda idx: self.layout.map[:idx] #ugliness
         g = nx.Graph()
+        
+        #vertices directly from syndrome
         g.add_nodes_from(syndrome)
         g.add_weighted_edges_from(
             (v1, v2, -pair_dist(crds(v1), crds(v2))) for v1, v2 in 
             it.combinations(syndrome, 2)
             )
+        
+        #boundary vertices, edges from boundary distance
+        
+        
+        #weight-0 edges between boundary vertices
         return g
 
     def correction(graph):
