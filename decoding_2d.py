@@ -22,7 +22,8 @@ class Sim2D(object):
         self.error_model = em.PauliErrorModel([(1. - p)**2,
             p * (1. - p), p * (1. - p), p**2], 
             [[self.layout.map[_]] for _ in self.layout.datas])
-
+        self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
+        
     def random_error(self):
         return product(self.error_model.sample())
     
@@ -30,7 +31,7 @@ class Sim2D(object):
         x_synd = []
         z_synd = []
         
-        for ltr, lst in zip('xz', [x_synd, z_synd]):
+        for ltr, lst in zip('XZ', [x_synd, z_synd]):
             for idx, stab in self.layout.stabilisers()[ltr].items():
                 if error.com(stab) == 1:
                     lst.append(idx)
@@ -58,8 +59,8 @@ class Sim2D(object):
         #boundary vertices, edges from boundary distance
         for s in syndrome:
             g.add_edge(s, (s, 'b'),
-                        weight=-self.bdy_dist(crds[s])[0],
-                        close_pt=self.bdy_dist(crds[s])[1])
+                        weight=-self.bdy_info(crds[s])[0],
+                        close_pt=self.bdy_info(crds[s])[1])
         
         #weight-0 edges between boundary vertices
         g.add_weighted_edges_from(
@@ -88,9 +89,9 @@ class Sim2D(object):
                 pauli_lst.append(self.path_pauli(x[n1], x[n2],
                                             self.layout.anc_type(n1)))
             elif isinstance(n1, int) ^ isinstance(n2, int):
-                bdy_pt = g[n1][n2]['close_pt']
+                bdy_pt = graph[n1][n2]['close_pt']
                 vert = n1 if isinstance(n1, int) else n2
-                pauli_lst.append(path_pauli(bdy_pt, x[vert],
+                pauli_lst.append(self.path_pauli(bdy_pt, x[vert],
                                             self.layout.anc_type(vert)))
             else:
                 pass #both boundary points, no correction
@@ -103,18 +104,56 @@ class Sim2D(object):
         single letter recording the resulting logical error (may be I,
         X, Y or Z)
         """
+        anticom_dict = {
+                        ( 0, 0 ) : 'I',
+                        ( 0, 1 ) : 'X',
+                        ( 1, 0 ) : 'Z',
+                        ( 1, 1 ) : 'Y'
+                    }
         x_bar, z_bar = self.layout.logicals()
-        pass
+        loop = error * x_corr * z_corr
+        x_com, z_com = x_bar.com(loop), z_bar.com(loop)
 
-    def bdy_dist(self, crd):
+        return anticom_dict[ ( x_com, z_com ) ]
+
+    def run(self, n_trials, verbose=False):
+        """
+        Repeats the following cycle `n_trials` times:
+         + Generate a random error
+         + determine syndromes by checking stabilisers
+         + make those syndromes into a graph with boundary vertices
+         + match on that graph
+         + check for a logical error by testing anticommutation with
+           the logical paulis
+        """
+        for trial in range(n_trials):
+            err = self.random_error()
+            x_synd, z_synd = self.syndromes(err)
+            x_graph, z_graph = self.graph(x_synd), self.graph(z_synd)
+            x_corr = self.correction(x_graph)
+            z_corr = self.correction(z_graph)
+            log = self.logical_error(err, x_corr, z_corr)
+            self.errors[log] += 1
+            if verbose:
+                print "\n".join([
+                    "error: {}".format(err),
+                    "X syndrome: {}".format(x_synd),
+                    "Z syndrome: {}".format(z_synd),
+                    "X correction: {}".format(x_corr),
+                    "Z correction: {}".format(z_corr),
+                    "logical error: {}".format(log)
+                    ])
+
+
+    def bdy_info(self, crd):
         """
         Returns the minimum distance between the input co-ordinate and
         one of the two acceptable corner vertices, depending on 
         syndrome type (X or Z). 
         """
         min_dist = 4 * self.d #any impossibly large value will do
-
-        for pt in self.layout.boundary_points():
+        anc_type = 'X' if crd in self.layout.x_ancs() else 'Z'
+        for pt in self.layout.boundary_points(anc_type):
             new_dist = pair_dist(crd, pt)
             if new_dist < min_dist:
                 min_dist, close_pt = new_dist, pt
@@ -155,7 +194,7 @@ class Sim2D(object):
 
 
 #-----------------------convenience functions-------------------------#
-product = lambda itrbl: reduce(mul, itrbl)
+product = lambda itrbl: reduce(mul, itrbl, sp.Pauli({},{}))
 
 
 def pair_dist(crd_0, crd_1):
@@ -169,7 +208,7 @@ def pair_dist(crd_0, crd_1):
     Note that syndromes at (2,2) and (4,4) in the layout are separated
     by a length-1 chain, because the squares are 2-by-2. 
     """
-    diff = map(abs, (crd_0[0] - crd_1[0], crd_0[0] - crd_1[0]))
+    diff = map(abs, (crd_0[0] - crd_1[0], crd_0[1] - crd_1[1]))
     diag_dist = min(diff)
     remainder = max([diff[0] - diag_dist, diff[1] - diag_dist])
     return diag_dist / 2 + remainder
