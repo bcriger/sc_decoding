@@ -3,6 +3,8 @@ import error_model as em
 import itertools as it
 import networkx as nx
 from operator import mul
+from math import copysign
+import sparse_pauli as sp
 
 class Sim2D(object):
     """
@@ -79,6 +81,7 @@ class Sim2D(object):
         # get rid of non-digraph duplicates 
         matching = [(n1, n2) for n1, n2 in matching.items() if n1 < n2]
         
+        #TODO: Dumb to check ancilla type every time, should be input.
         pauli_lst = []
         for n1, n2 in matching:
             if isinstance(n1, int) & isinstance(n2, int):
@@ -129,16 +132,26 @@ class Sim2D(object):
         two diagonal paths on the rotated lattice that go to and from
         this corner. 
         """
+        
         a, b, c, d = crd_0[0], crd_0[1], crd_1[0], crd_1[1]
-        vs = [((d-b-c+a)/2, (b+d-c-a)/2),
-                                (-(d-b+c-a)/2, -(-b-d-c-a)/2)]
+        vs = [
+                ( ( d + c - b + a ) / 2, ( d + c + b - a ) / 2 ),
+                ( ( d - c - b - a ) / -2, ( -d + c - b - a ) / -2 )
+            ]
         
         if vs[0] in sum(self.layout.ancillas.values(), ()):
-            mid_vert = vs[0]
+            mid_v = vs[0]
         else:
-            mid_vert = vs[1]
+            mid_v = vs[1]
         
-        return map(self.layout.map, path_0 + path_1)
+        pth_0, pth_1 = diag_pth(crd_0, mid_v), diag_pth(mid_v, crd_1)
+
+        #path on lattice, uses idxs
+        p = [self.layout.map[crd] for crd in pth_0 + pth_1]
+        
+        pl = sp.Pauli(p, []) if anc_type == 'Z' else sp.Pauli([], p)
+        
+        return pl 
 
 
 #-----------------------convenience functions-------------------------#
@@ -160,6 +173,18 @@ def pair_dist(crd_0, crd_1):
     diag_dist = min(diff)
     remainder = max([diff[0] - diag_dist, diff[1] - diag_dist])
     return diag_dist / 2 + remainder
+
+def diag_pth(crd_0, crd_1):
+    """
+    Produces a path between two points which takes steps (\pm 2, \pm 2)
+    between the two, starting (\pm 1, \pm 1) away from the first.
+    """
+    dx, dy = crd_1[0] - crd_0[0], crd_1[1] - crd_0[1]
+    shft_x, shft_y = map(int, [copysign(1, dx), copysign(1, dy)])
+    step_x, step_y = map(int, [copysign(2, dx), copysign(2, dy)])
+    return zip(range(crd_0[0] + shft_x, crd_1[0], step_x), 
+                range(crd_0[1] + shft_y, crd_1[1], step_y))
+    
 
 #---------------------------------------------------------------------#
 
