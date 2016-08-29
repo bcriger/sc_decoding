@@ -5,6 +5,7 @@ import networkx as nx
 from operator import mul
 from math import copysign
 import sparse_pauli as sp
+import progressbar as pb
 
 class Sim2D(object):
     """
@@ -116,7 +117,7 @@ class Sim2D(object):
 
         return anticom_dict[ ( x_com, z_com ) ]
 
-    def run(self, n_trials, verbose=False):
+    def run(self, n_trials, verbose=False, progress=True):
         """
         Repeats the following cycle `n_trials` times:
          + Generate a random error
@@ -126,7 +127,9 @@ class Sim2D(object):
          + check for a logical error by testing anticommutation with
            the logical paulis
         """
-        for trial in range(n_trials):
+        bar = pb.ProgressBar()
+        trials = bar(range(n_trials)) if progress else range(n_trials)
+        for trial in trials:
             err = self.random_error()
             x_synd, z_synd = self.syndromes(err)
             x_graph, z_graph = self.graph(x_synd), self.graph(z_synd)
@@ -143,6 +146,7 @@ class Sim2D(object):
                     "Z correction: {}".format(z_corr),
                     "logical error: {}".format(log)
                     ])
+            
 
 
     def bdy_info(self, crd):
