@@ -20,8 +20,7 @@ class Sim2D(object):
         
         #derived properties
         self.layout = SCLayout(d)
-        self.error_model = em.PauliErrorModel([(1. - p)**2,
-            p * (1. - p), p * (1. - p), p**2], 
+        self.error_model = em.PauliErrorModel.iidxz_model(p, 
             [[self.layout.map[_]] for _ in self.layout.datas])
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
         

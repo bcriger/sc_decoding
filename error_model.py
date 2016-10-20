@@ -66,6 +66,17 @@ class PauliErrorModel(object):
         return map(lambda args: int_to_pauli(*args),
                                 zip(indxs, self.q_lsts))
 
+    def iidxz_model(p, q_set):
+        p_vec = [(1. - p)**2, p * (1. - p), p * (1. - p), p**2]
+        return PauliErrorModel(p_vec, q_set)
+
+    def x_flip(p, q_set):
+        p_vec = [1. - p, 0., p, 0.]
+        return PauliErrorModel(p_vec, q_set)
+    
+    def z_flip(p, q_set):
+        p_vec = [1. - p, p, 0., 0.]
+        return PauliErrorModel(p_vec, q_set)
 
 class NoisyClifford(object):
     """
