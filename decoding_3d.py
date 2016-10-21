@@ -126,10 +126,17 @@ def fowler_model(extractor, p):
     p/15.
     """
     err_list = []
-    for timestep in extractor:
+    for t, timestep in enumerate(extractor):
+        
         singles, doubles = (
-            [tpl[1] for tpl in timestep if tpl[0] in LOCS[key]]
+            [b for a, b in timestep if a in LOCS[key]]
             for key in ['SINGLE_GATES', 'DOUBLE_GATES']
                         )
-        p_x, p_z, m_x, m_z = [[tpl[1] for tpl in timestep if tpl[0] == key] for key in ('P_X', 'P_Z', 'M_X', 'M_Z')]
-        #TODO remember to put measurement errors in the elem before the current one.        
+        
+        p_x, p_z, m_x, m_z = [[b for a, b in timestep if a == s]
+                                 for s in ('P_X', 'P_Z', 'M_X', 'M_Z')]
+
+        err_list
+
+
+
