@@ -20,7 +20,10 @@ class PauliErrorModel(object):
     def __init__(self, p_arr, q_lsts, check=True):
         
         #upcast if q_lsts is not nested
-        if not hasattr(q_lsts[0], '__iter__'):
+        if q_lsts == []:
+            q_lsts = [[]]
+            check = False
+        elif not hasattr(q_lsts[0], '__iter__'):
                 q_lsts = [q_lsts]
         
         if check:
