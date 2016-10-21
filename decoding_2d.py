@@ -20,7 +20,9 @@ class Sim2D(object):
         
         #derived properties
         self.layout = SCLayout(d)
-        self.error_model = em.PauliErrorModel.iidxz_model(p, 
+        # self.error_model = em.PauliErrorModel.iidxz_model(p, 
+        #     [[self.layout.map[_]] for _ in self.layout.datas])
+        self.error_model = em.PauliErrorModel([(1. - p)**2, p * (1. - p), p * (1. - p), p**2], 
             [[self.layout.map[_]] for _ in self.layout.datas])
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
         
@@ -31,7 +33,7 @@ class Sim2D(object):
         x_synd = []
         z_synd = []
         
-        for ltr, lst in zip('XZ', [x_synd, z_synd]):
+        for ltr, lst in zip('xz', [x_synd, z_synd]):
             for idx, stab in self.layout.stabilisers()[ltr].items():
                 if error.com(stab) == 1:
                     lst.append(idx)

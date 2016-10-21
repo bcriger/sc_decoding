@@ -4,6 +4,7 @@ from collections import Iterable
 import error_model as em
 from cm.SCLayoutClass import LOCS
 import progressbar as pb
+import sparse_pauli as sp
 
 class Sim3D(object):
     """
@@ -88,7 +89,7 @@ class Sim3D(object):
         through the `n_meas` measurement rounds. 
         """
         hist = []
-        error_state = 
+        error_state = sp.Pauli.I()
         for meas_dx in xrange(n_meas):
             #run timestep, then sample
             for step, 
@@ -115,6 +116,8 @@ class Sim3D(object):
         is performed inside this method.
         Also, a single correction Pauli is returned. 
         """
+        if not(metric):
+            #use manhattan dist
 
     def logical_error(self, final_error, corr):
         """
