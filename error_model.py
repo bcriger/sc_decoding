@@ -80,6 +80,17 @@ class PauliErrorModel(object):
     def z_flip(p, q_set):
         p_vec = [1. - p, p, 0., 0.]
         return PauliErrorModel(p_vec, q_set)
+    
+    def depolarize(p, q_set):
+        p_vec = [1. - p, p / 3., p / 3., p / 3.]
+        return PauliErrorModel(p_vec, q_set)
+
+    def pair_twirl(p, pair_set):
+        p_vec = [1. - p, p / 15., p / 15., p / 15., p / 15., p / 15., 
+                p / 15., p / 15., p / 15., p / 15., p / 15., p / 15.,
+                p / 15., p / 15., p / 15., p / 15.]
+        return PauliErrorModel(p_vec, pair_set)
+
 
 class NoisyClifford(object):
     """
