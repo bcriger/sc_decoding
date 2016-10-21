@@ -3,6 +3,7 @@ import cPickle as pkl
 from collections import Iterable
 import error_model as em
 from cm.SCLayoutClass import LOCS
+import progressbar as pb
 
 class Sim3D(object):
     """
@@ -77,11 +78,75 @@ class Sim3D(object):
                         ).format(idx, elem))
 
         self.gate_error_model = gate_error_model
-    
+        
+        #extra derived properties
+        self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
+
+    def error_history(self):
+        """
+        Produces a list of sparse_pauli.Paulis that track the error 
+        through the `n_meas` measurement rounds. 
+        """
+        hist = []
+        error_state = 
+        for meas_dx in xrange(n_meas):
+            #run timestep, then sample
+            for step, 
+            hist.append(None)
+
+    def syndrome_history(self, error_history):
+        """
+        Produces raw syndromes from a list of Paulis like is produced
+        by self.error_history.
+        Important note: this method does not take differences between
+        syndromes, or account for a lack of preparation steps.
+        That is done elsewhere.
+        Also, this function _does_ insert a final round of perfect 
+        syndrome measurement, to simulate FT measurement (learn more
+        about this).  
+        """
+
+    def correction(self, syndrome_history, metric=None):
+        """
+        Given a set of recorded syndromes, returns a correction by
+        minimum-weight perfect matching.
+        In order to 'make room' for correlated decoders, X and Z 
+        syndromes are passed in as a single object, and any splitting
+        is performed inside this method.
+        Also, a single correction Pauli is returned. 
+        """
+
+    def logical_error(self, final_error, corr):
+        """
+        Given an error and a correction, multiplies them and returns a
+        single letter recording the resulting logical error (may be I,
+        X, Y or Z)
+        """
+        anticom_dict = {
+                        ( 0, 0 ) : 'I',
+                        ( 0, 1 ) : 'X',
+                        ( 1, 0 ) : 'Z',
+                        ( 1, 1 ) : 'Y'
+                    }
+        x_bar, z_bar = self.layout.logicals()
+        loop = final_error * corr
+        x_com, z_com = x_bar.com(loop), z_bar.com(loop)
+
+        return anticom_dict[ ( x_com, z_com ) ]
+
     def run(self, n_trials):
         """
+        Repeats the following cycle `n_trials` times:
+         + Generate a list of 'n_meas' cumulative errors
+         + determine syndromes by checking stabilisers
+         + make those syndromes into a graph with boundary vertices
+         + match on that graph
+         + check for a logical error by testing anticommutation with
+           the logical paulis
         """
-        for run_dx in xrange(n_trials):
+        bar = pb.ProgressBar()
+        trials = bar(range(n_trials)) if progress else range(n_trials)
+        for trial in trials:
             pass
         pass
 
@@ -136,7 +201,18 @@ def fowler_model(extractor, p):
         p_x, p_z, m_x, m_z = [[b for a, b in timestep if a == s]
                                  for s in ('P_X', 'P_Z', 'M_X', 'M_Z')]
 
-        err_list
+        err_list[t].extend([
+            em.PauliErrorModel.depolarize(p, singles),
+            em.PauliErrorModel.pair_twirl(p, doubles),
+            em.PauliErrorModel.z_flip(p, p_x),
+            em.PauliErrorModel.x_flip(p, p_z)
+            ])
+        # errors always come after gates, so measurement errors have to
+        # go _back in time_:
+        err_list[t-1].extend([
+            em.PauliErrorModel.x_flip(p, m_z),
+            em.PauliErrorModel.z_flip(p, m_x)
+                    ])
 
 
 
