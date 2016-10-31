@@ -33,7 +33,7 @@ class Sim2D(object):
         x_synd = []
         z_synd = []
         
-        for ltr, lst in zip('xz', [x_synd, z_synd]):
+        for ltr, lst in zip('XZ', [x_synd, z_synd]):
             for idx, stab in self.layout.stabilisers()[ltr].items():
                 if error.com(stab) == 1:
                     lst.append(idx)
