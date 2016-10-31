@@ -5,6 +5,9 @@ import error_model as em
 from circuit_metric.SCLayoutClass import LOCS
 import progressbar as pb
 import sparse_pauli as sp
+from operator import mul
+
+product = lambda itrbl: reduce(mul, itrbl)
 
 class Sim3D(object):
     """
@@ -89,11 +92,14 @@ class Sim3D(object):
         through the `n_meas` measurement rounds. 
         """
         hist = []
-        error_state = sp.Pauli()
-        for meas_dx in xrange(n_meas):
-            #run timestep, then sample
-            for step, model in None: 
-                pass #TODO Continue here (zip something?)
+        #perfect (quiescent state) initialization
+        error_state = sp.Pauli() 
+        for meas_dx in xrange(1, n_meas):
+            #run circuit
+            for step, model in zip(self.):
+                #sample, then run next timestep
+                error_state *= product()
+                pass 
             hist.append(None)
 
     def syndrome_history(self, error_history):
