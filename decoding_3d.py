@@ -176,11 +176,15 @@ def pq_model(extractor, p, q):
     ds = [tpl[1] for tpl in extractor[0] if tpl[0]=='I']
     err_list[0] = [em.iidxz_model(p, ds)]
 
-    # flip ancillas at the end
-    x_ms = [tpl[1] for tpl in extractor[0] if tpl[0]=='M_X']
-    z_ms = [tpl[1] for tpl in extractor[0] if tpl[0]=='M_Z']
-    err_list[-1].append(em.z_flip(q, x_ms))
-    err_list[-1].append(em.x_flip(q, z_ms))
+    # flip ancillas immediately before measurement
+    for t, timestep in enumerate(extractor):
+        
+        m_x, m_z = [[tp[1:] for tp in timestep if tp[0] == s]
+                                 for s in ('M_X', 'M_Z')]
+
+        # errors always come after gates, so measurement errors have to
+        # go _back in time_:
+        err_list[t-1].extend([ em.x_flip(q, m_z), em.z_flip(q, m_x) ])
 
     return err_list
 
@@ -211,7 +215,7 @@ def fowler_model(extractor, p):
             ])
         # errors always come after gates, so measurement errors have to
         # go _back in time_:
-        err_list[t-1].extend([
+        err_list[t - 1].extend([
             em.x_flip(p, m_z),
             em.z_flip(p, m_x)
                     ])

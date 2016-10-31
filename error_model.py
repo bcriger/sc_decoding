@@ -1,5 +1,8 @@
 import numpy as np
 import sparse_pauli as sp
+from operator import mul
+
+product = lambda itrbl: reduce(mul, itrbl)
 
 TOL = 10.**-14
 
@@ -66,8 +69,8 @@ class PauliErrorModel(object):
         convert to a sparse_pauli using int_to_pauli. 
         """
         indxs = [int_sample(self.p_arr) for _ in self.q_lsts]
-        return map(lambda args: int_to_pauli(*args),
-                                zip(indxs, self.q_lsts))
+        return product(map(lambda args: int_to_pauli(*args),
+                                zip(indxs, self.q_lsts)))
 
 #---------------------------specific models---------------------------#
 
