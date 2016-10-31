@@ -24,7 +24,8 @@ class PauliErrorModel(object):
             q_lsts = [[]]
             check = False
         elif not hasattr(q_lsts[0], '__iter__'):
-                q_lsts = [q_lsts]
+                #q_lsts = [q_lsts]
+                q_lsts = map(list, q_lsts)
         
         if check:
             p_arr = array_cast(p_arr)
@@ -69,29 +70,31 @@ class PauliErrorModel(object):
         return map(lambda args: int_to_pauli(*args),
                                 zip(indxs, self.q_lsts))
 
-    def iidxz_model(p, q_set):
-        p_vec = [(1. - p)**2, p * (1. - p), p * (1. - p), p**2]
-        return PauliErrorModel(p_vec, q_set)
+#---------------------------specific models---------------------------#
 
-    def x_flip(p, q_set):
-        p_vec = [1. - p, 0., p, 0.]
-        return PauliErrorModel(p_vec, q_set)
-    
-    def z_flip(p, q_set):
-        p_vec = [1. - p, p, 0., 0.]
-        return PauliErrorModel(p_vec, q_set)
-    
-    def depolarize(p, q_set):
-        p_vec = [1. - p, p / 3., p / 3., p / 3.]
-        return PauliErrorModel(p_vec, q_set)
+def iidxz_model(p, q_set):
+    p_vec = [(1. - p)**2, p * (1. - p), p * (1. - p), p**2]
+    return PauliErrorModel(p_vec, q_set)
 
-    def pair_twirl(p, pair_set):
-        p_vec = [1. - p, p / 15., p / 15., p / 15., p / 15., p / 15., 
-                p / 15., p / 15., p / 15., p / 15., p / 15., p / 15.,
-                p / 15., p / 15., p / 15., p / 15.]
-        return PauliErrorModel(p_vec, pair_set)
+def x_flip(p, q_set):
+    p_vec = [1. - p, 0., p, 0.]
+    return PauliErrorModel(p_vec, q_set)
 
+def z_flip(p, q_set):
+    p_vec = [1. - p, p, 0., 0.]
+    return PauliErrorModel(p_vec, q_set)
 
+def depolarize(p, q_set):
+    p_vec = [1. - p, p / 3., p / 3., p / 3.]
+    return PauliErrorModel(p_vec, q_set)
+
+def pair_twirl(p, pair_set):
+    p_vec = [1. - p, p / 15., p / 15., p / 15., p / 15., p / 15., 
+            p / 15., p / 15., p / 15., p / 15., p / 15., p / 15.,
+            p / 15., p / 15., p / 15., p / 15.]
+    return PauliErrorModel(p_vec, pair_set)
+
+#---------------------------------------------------------------------#
 class NoisyClifford(object):
     """
     Sometimes, a noisy Clifford operation is best represented not as a
