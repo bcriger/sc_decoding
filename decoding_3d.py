@@ -2,7 +2,7 @@ import circuit_metric as cm
 import cPickle as pkl
 from collections import Iterable
 import error_model as em
-from cm.SCLayoutClass import LOCS
+from circuit_metric.SCLayoutClass import LOCS
 import progressbar as pb
 import sparse_pauli as sp
 
@@ -89,10 +89,11 @@ class Sim3D(object):
         through the `n_meas` measurement rounds. 
         """
         hist = []
-        error_state = sp.Pauli.I()
+        error_state = sp.Pauli()
         for meas_dx in xrange(n_meas):
             #run timestep, then sample
-            for step, 
+            for step, model in None: 
+                pass #TODO Continue here (zip something?)
             hist.append(None)
 
     def syndrome_history(self, error_history):
@@ -117,7 +118,7 @@ class Sim3D(object):
         Also, a single correction Pauli is returned. 
         """
         if not(metric):
-            #use manhattan dist
+            pass #use manhattan dist
 
     def logical_error(self, final_error, corr):
         """
@@ -193,7 +194,7 @@ def fowler_model(extractor, p):
     depolarizing map where each non-I two-bit Pauli has probability 
     p/15.
     """
-    err_list = []
+    err_list = [[] for _ in extractor]
     for t, timestep in enumerate(extractor):
         
         singles, doubles = (
@@ -205,16 +206,16 @@ def fowler_model(extractor, p):
                                  for s in ('P_X', 'P_Z', 'M_X', 'M_Z')]
 
         err_list[t].extend([
-            em.PauliErrorModel.depolarize(p, singles),
-            em.PauliErrorModel.pair_twirl(p, doubles),
-            em.PauliErrorModel.z_flip(p, p_x),
-            em.PauliErrorModel.x_flip(p, p_z)
+            em.depolarize(p, singles),
+            em.pair_twirl(p, doubles),
+            em.z_flip(p, p_x),
+            em.x_flip(p, p_z)
             ])
         # errors always come after gates, so measurement errors have to
         # go _back in time_:
         err_list[t-1].extend([
-            em.PauliErrorModel.x_flip(p, m_z),
-            em.PauliErrorModel.z_flip(p, m_x)
+            em.x_flip(p, m_z),
+            em.z_flip(p, m_x)
                     ])
 
 
