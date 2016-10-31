@@ -174,13 +174,13 @@ def pq_model(extractor, p, q):
     
     # data qubits
     ds = [tpl[1] for tpl in extractor[0] if tpl[0]=='I']
-    err_list[0] = [em.PauliErrorModel.iidxz_model(p, ds)]
+    err_list[0] = [em.iidxz_model(p, ds)]
 
     # flip ancillas at the end
     x_ms = [tpl[1] for tpl in extractor[0] if tpl[0]=='M_X']
     z_ms = [tpl[1] for tpl in extractor[0] if tpl[0]=='M_Z']
-    err_list[-1].append(em.PauliErrorModel.z_flip(q, x_ms))
-    err_list[-1].append(em.PauliErrorModel.x_flip(q, z_ms))
+    err_list[-1].append(em.z_flip(q, x_ms))
+    err_list[-1].append(em.x_flip(q, z_ms))
 
     return err_list
 
@@ -197,12 +197,10 @@ def fowler_model(extractor, p):
     err_list = [[] for _ in extractor]
     for t, timestep in enumerate(extractor):
         
-        singles, doubles = (
-            [b for a, b in timestep if a in LOCS[key]]
-            for key in ['SINGLE_GATES', 'DOUBLE_GATES']
-                        )
+        singles, doubles = [[tp[1:] for tp in timestep if tp[0] in LOCS[_]]
+                            for _ in ['SINGLE_GATES', 'DOUBLE_GATES']]
         
-        p_x, p_z, m_x, m_z = [[b for a, b in timestep if a == s]
+        p_x, p_z, m_x, m_z = [[tp[1:] for tp in timestep if tp[0] == s]
                                  for s in ('P_X', 'P_Z', 'M_X', 'M_Z')]
 
         err_list[t].extend([
@@ -218,5 +216,4 @@ def fowler_model(extractor, p):
             em.z_flip(p, m_x)
                     ])
 
-
-
+    return err_list

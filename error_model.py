@@ -24,8 +24,7 @@ class PauliErrorModel(object):
             q_lsts = [[]]
             check = False
         elif not hasattr(q_lsts[0], '__iter__'):
-                #q_lsts = [q_lsts]
-                q_lsts = map(list, q_lsts)
+            q_lsts = [[_] for _ in q_lsts]
         
         if check:
             p_arr = array_cast(p_arr)
