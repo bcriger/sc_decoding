@@ -96,17 +96,22 @@ class Sim3D(object):
         #perfect (quiescent state) initialization
         error_state = sp.Pauli() 
         for meas_dx in xrange(1, n_meas):
+            #just the ones
+            synd_state = {'x': set(), 'z': set()}
             #run circuit
             for stp, mdl in zip(self.extractor, self.gate_error_model):
                 #run timestep, then sample
-                x_synds, z_synds cm.apply_step(stp, error_state)
+                new_synds = cm.apply_step(stp, error_state)
                 error_state *= product(_.sample() for _ in mdl)
-                
-            hist.append(None)
+                for ki in synd_state.keys():
+                    synd_state[ki] &= new_synds[ki][1]
+            
+            synd_hist.append(synd_state)
+            err_hist.append(error_state)
 
-    
+        return err_hist, synd_hist
 
-    def correction(self, syndrome_history, metric=None):
+    def correction(self, synd_hist, metric=None):
         """
         Given a set of recorded syndromes, returns a correction by
         minimum-weight perfect matching.
@@ -114,9 +119,22 @@ class Sim3D(object):
         syndromes are passed in as a single object, and any splitting
         is performed inside this method.
         Also, a single correction Pauli is returned. 
+        metric should be a function, so you'll have to wrap a matrix 
+        in table-lookup if you want to use one.
         """
         if not(metric):
             pass #use manhattan dist
+        
+        flip_list = {'x': [], 'z': []}
+        for key in 'xz':
+            #first set of flips at first round
+            flip_list[key] = [synd_hist[key][0]]
+            for t, layer in enumerate(synd_hist[key][1:]):
+                #diffs
+                flip_list[key][t] = synd_hist[key][t] ^ synd_hist[key][t - 1] 
+        #TODO FINISH
+
+
 
     def logical_error(self, final_error, corr):
         """
