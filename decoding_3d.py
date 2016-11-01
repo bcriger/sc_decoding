@@ -85,8 +85,9 @@ class Sim3D(object):
         
         #extra derived properties
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
+        self.extractor = self.layout.extractor() #convenience        
 
-    def error_history(self):
+    def history(self):
         """
         Produces a list of sparse_pauli.Paulis that track the error 
         through the `n_meas` measurement rounds. 
@@ -96,23 +97,14 @@ class Sim3D(object):
         error_state = sp.Pauli() 
         for meas_dx in xrange(1, n_meas):
             #run circuit
-            for step, model in zip(self.):
-                #sample, then run next timestep
-                error_state *= product()
-                pass 
+            for stp, mdl in zip(self.extractor, self.gate_error_model):
+                #run timestep, then sample
+                x_synds, z_synds cm.apply_step(stp, error_state)
+                error_state *= product(_.sample() for _ in mdl)
+                
             hist.append(None)
 
-    def syndrome_history(self, error_history):
-        """
-        Produces raw syndromes from a list of Paulis like is produced
-        by self.error_history.
-        Important note: this method does not take differences between
-        syndromes, or account for a lack of preparation steps.
-        That is done elsewhere.
-        Also, this function _does_ insert a final round of perfect 
-        syndrome measurement, to simulate FT measurement (learn more
-        about this).  
-        """
+    
 
     def correction(self, syndrome_history, metric=None):
         """
