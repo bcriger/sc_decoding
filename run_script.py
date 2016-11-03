@@ -26,10 +26,10 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm):
 
 if __name__ == '__main__':
     from sys import argv
-    # print(argv)
+    print(argv)
     err_lo, err_hi = map(float, argv[1:3])
     n_points = int(argv[3])
-    dists = list(map(int, argv[4].split()))
+    dists = list(map(int, argv[4].split(' ')))
     n_trials = int(argv[5])
     flnm = argv[6]
     run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm)
