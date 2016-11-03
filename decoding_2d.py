@@ -40,6 +40,36 @@ class Sim2D(object):
 
         return x_synd, z_synd
 
+    def dumb_correction(self, syndromes):
+        """
+        Connects all detection events to the closest boundary of the
+        appropriate type.
+        Simple dumb decoder.
+        """
+
+        if z_syndrome != []:
+            for i in z_syndrome:
+                key = self.key_from_value(self.layout.map, i)
+                closest_z_bnd = self.bdy_info(key)
+                connect_to_z_bnd = self.path_pauli(list(key), list(closest_z_bnd[1]), 'Z')
+                dumb_correction_z.append(connect_to_z_bnd)
+
+        if x_syndrome != []:
+            for i in x_syndrome:
+                key = self.key_from_value(self.layout.map, i)
+                closest_x_bnd = self.bdy_info(key)
+                connect_to_x_bnd = self.path_pauli(list(key), list(closest_x_bnd[1]), 'X')
+                dumb_correction_x.append(connect_to_x_bnd)
+
+        if dumb_correction_z != []:
+            for i in dumb_correction_z:
+                corr_dumb_dec_z = corr_dumb_dec_z * i
+        if dumb_correction_x != []:
+            for i in dumb_correction_x:
+                corr_dumb_dec_x = corr_dumb_dec_x * i
+
+        return corr_dumb_dec_x, corr_dumb_dec_z
+
     def graph(self, syndrome):
         """
         returns a NetworkX graph from a given syndrome, on which you 
@@ -149,16 +179,15 @@ class Sim2D(object):
                     ])
             
 
-
     def bdy_info(self, crd):
         """
         Returns the minimum distance between the input co-ordinate and
-        one of the two acceptable corner vertices, depending on 
+        one of the acceptable boundary vertices, depending on 
         syndrome type (X or Z). 
         """
         min_dist = 4 * self.d #any impossibly large value will do
-        anc_type = 'X' if crd in self.layout.x_ancs() else 'Z'
-        for pt in self.layout.boundary_points(anc_type):
+        err_type = 'Z' if crd in self.layout.x_ancs() else 'X'
+        for pt in self.layout.boundary_points(err_type):
             new_dist = pair_dist(crd, pt)
             if new_dist < min_dist:
                 min_dist, close_pt = new_dist, pt
