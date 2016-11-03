@@ -92,7 +92,7 @@ class Sim2D(object):
             )
         return g
 
-    def correction(self, graph):
+    def correction(self, graph, err):
         """
         Given a syndrome graph with negative edge weights, finds the
         maximum-weight perfect matching and produces a
@@ -102,19 +102,16 @@ class Sim2D(object):
         matching = nx.max_weight_matching(graph, maxcardinality=True)
         
         # get rid of non-digraph duplicates 
-        matching = [(n1, n2) for n1, n2 in matching.items() if n1 < n2]
+        matching = [(u, v) for u, v in matching.items() if u < v]
         
-        #TODO: Dumb to check ancilla type every time, should be input.
         pauli_lst = []
-        for n1, n2 in matching:
-            if isinstance(n1, int) & isinstance(n2, int):
-                pauli_lst.append(self.path_pauli(x[n1], x[n2],
-                                            self.layout.anc_type(n1)))
-            elif isinstance(n1, int) ^ isinstance(n2, int):
-                bdy_pt = graph[n1][n2]['close_pt']
-                vert = n1 if isinstance(n1, int) else n2
-                pauli_lst.append(self.path_pauli(bdy_pt, x[vert],
-                                            self.layout.anc_type(vert)))
+        for u, v in matching:
+            if isinstance(u, int) & isinstance(v, int):
+                pauli_lst.append(self.path_pauli(x[u], x[v], err))
+            elif isinstance(u, int) ^ isinstance(v, int):
+                bdy_pt = graph[u][v]['close_pt']
+                vert = u if isinstance(u, int) else v
+                pauli_lst.append(self.path_pauli(bdy_pt, x[vert], err))
             else:
                 pass #both boundary points, no correction
 
@@ -154,8 +151,8 @@ class Sim2D(object):
             err = self.random_error()
             x_synd, z_synd = self.syndromes(err)
             x_graph, z_graph = self.graph(x_synd), self.graph(z_synd)
-            x_corr = self.correction(x_graph)
-            z_corr = self.correction(z_graph)
+            x_corr = self.correction(x_graph, 'Z')
+            z_corr = self.correction(z_graph, 'X')
             log = self.logical_error(err, x_corr, z_corr)
             self.errors[log] += 1
             if verbose:
