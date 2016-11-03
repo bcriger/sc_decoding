@@ -27,7 +27,7 @@ class Sim2D(object):
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
         
     def random_error(self):
-        return product(self.error_model.sample())
+        return self.error_model.sample()
     
     def syndromes(self, error):
         x_synd = []
@@ -39,6 +39,26 @@ class Sim2D(object):
                     lst.append(idx)
 
         return x_synd, z_synd
+
+    def dumb_correction(self, syndromes):
+        """
+        Connects all detection events to the closest boundary of the
+        appropriate type.
+        Simple dumb decoder.
+        Throughout this method, we will treat a Z syndrome as
+        indicating a Z error. 
+        Note that these syndromes are supported on the X ancillas of
+        the layout and vice versa.
+        """
+        corr_dict = {'Z': sp.Pauli(), 'X': sp.Pauli()}
+        for err, synd in zip ('ZX', syndromes):
+            crds = [self.layout.map.inv[_] for _ in synd]
+            corr_dict[err] *= product([
+                self.path_pauli(_, self.bdy_info(_)[1], err)
+                for _ in crds
+                ])
+
+        return corr_dict['X'], corr_dict['Z']
 
     def graph(self, syndrome):
         """
@@ -72,7 +92,7 @@ class Sim2D(object):
             )
         return g
 
-    def correction(self, graph):
+    def correction(self, graph, err):
         """
         Given a syndrome graph with negative edge weights, finds the
         maximum-weight perfect matching and produces a
@@ -82,19 +102,16 @@ class Sim2D(object):
         matching = nx.max_weight_matching(graph, maxcardinality=True)
         
         # get rid of non-digraph duplicates 
-        matching = [(n1, n2) for n1, n2 in matching.items() if n1 < n2]
+        matching = [(u, v) for u, v in matching.items() if u < v]
         
-        #TODO: Dumb to check ancilla type every time, should be input.
         pauli_lst = []
-        for n1, n2 in matching:
-            if isinstance(n1, int) & isinstance(n2, int):
-                pauli_lst.append(self.path_pauli(x[n1], x[n2],
-                                            self.layout.anc_type(n1)))
-            elif isinstance(n1, int) ^ isinstance(n2, int):
-                bdy_pt = graph[n1][n2]['close_pt']
-                vert = n1 if isinstance(n1, int) else n2
-                pauli_lst.append(self.path_pauli(bdy_pt, x[vert],
-                                            self.layout.anc_type(vert)))
+        for u, v in matching:
+            if isinstance(u, int) & isinstance(v, int):
+                pauli_lst.append(self.path_pauli(x[u], x[v], err))
+            elif isinstance(u, int) ^ isinstance(v, int):
+                bdy_pt = graph[u][v]['close_pt']
+                vert = u if isinstance(u, int) else v
+                pauli_lst.append(self.path_pauli(bdy_pt, x[vert], err))
             else:
                 pass #both boundary points, no correction
 
@@ -134,8 +151,8 @@ class Sim2D(object):
             err = self.random_error()
             x_synd, z_synd = self.syndromes(err)
             x_graph, z_graph = self.graph(x_synd), self.graph(z_synd)
-            x_corr = self.correction(x_graph)
-            z_corr = self.correction(z_graph)
+            x_corr = self.correction(x_graph, 'Z')
+            z_corr = self.correction(z_graph, 'X')
             log = self.logical_error(err, x_corr, z_corr)
             self.errors[log] += 1
             if verbose:
@@ -149,26 +166,25 @@ class Sim2D(object):
                     ])
             
 
-
     def bdy_info(self, crd):
         """
         Returns the minimum distance between the input co-ordinate and
-        one of the two acceptable corner vertices, depending on 
+        one of the acceptable boundary vertices, depending on 
         syndrome type (X or Z). 
         """
         min_dist = 4 * self.d #any impossibly large value will do
-        anc_type = 'X' if crd in self.layout.x_ancs() else 'Z'
-        for pt in self.layout.boundary_points(anc_type):
+        err_type = 'Z' if crd in self.layout.x_ancs() else 'X'
+        for pt in self.layout.boundary_points(err_type):
             new_dist = pair_dist(crd, pt)
             if new_dist < min_dist:
                 min_dist, close_pt = new_dist, pt
 
         return min_dist, close_pt
 
-    def path_pauli(self, crd_0, crd_1, anc_type):
+    def path_pauli(self, crd_0, crd_1, err_type):
         """
         Returns a minimum-length Pauli between two ancillas, given the
-        type of STABILISER that they measure.
+        type of error that joins the two.
 
         This function is awkward, because it works implicitly on the
         un-rotated surface code, first finding a "corner" (a place on
@@ -193,13 +209,13 @@ class Sim2D(object):
         #path on lattice, uses idxs
         p = [self.layout.map[crd] for crd in pth_0 + pth_1]
         
-        pl = sp.Pauli(p, []) if anc_type == 'Z' else sp.Pauli([], p)
+        pl = sp.Pauli(p, []) if err_type == 'X' else sp.Pauli([], p)
         
         return pl 
 
 
 #-----------------------convenience functions-------------------------#
-product = lambda itrbl: reduce(mul, itrbl, sp.Pauli({},{}))
+product = lambda itrbl: reduce(mul, itrbl, sp.Pauli())
 
 
 def pair_dist(crd_0, crd_1):
