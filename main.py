@@ -17,43 +17,31 @@ neural = []
 
 with open('d=5_p=0.01_x_logical_error_training123.csv', 'wb') as csvfile:
     spamwriter = csv.writer(csvfile, delimiter='|', quotechar=' ', quoting=csv.QUOTE_MINIMAL)
-    spamwriter.writerow(['error'] + ['z_synd'] + ['dumb'] + ['nn'])
+    spamwriter.writerow(['error', 'z_synd', 'dumb', 'nn'])
 
     while cnt < 300:
         cycles += 1
-        log_mwpm, x_synd, z_synd, x_corr_mwpm, z_corr_mwpm, rnd_err = sim_test.run(1, verbose=False, progress=False)
-        dumb_x_corr, dumb_z_corr = sim_test.dumb_correction(x_synd, z_synd)
-        rnd_err_prime = dumb_x_corr * dumb_z_corr  # output/correction of the dumb decoder
-        rnd_err_prime_decomp = sim_test.XZ_decomposition(rnd_err_prime)
-        check_coset_value = sim_test.logical_error(rnd_err, rnd_err_prime_decomp[0], rnd_err_prime_decomp[1])
-
+        rnd_err = sim_test.random_error()
+        synds = sim_test.syndromes(rnd_err)
+        dumb_x_corr, dumb_z_corr = sim_test.dumb_correction(synds)
+        check_coset_value = sim_test.logical_error(rnd_err, dumb_x_corr, dumb_z_corr)
+        
+        rnd_err_prime = rnd_err * dumb_z_corr * dumb_x_corr
+        
         if check_coset_value == 'Y':
-            #rnd_err_double_prime_x = rnd_err_prime * logicals[0]
-            #rnd_err_double_prime_z = rnd_err_prime * logicals[1]
             rnd_err_double_prime = rnd_err_prime * logicals[0] * logicals[1]
             nn_out = 1
-        else:
-            if check_coset_value == 'X':
-                rnd_err_double_prime_x = rnd_err_prime * logicals[0]
-                nn_out = 1  # used as output for training the neural network for z_syndromes input
-            else:
-                rnd_err_double_prime_x = rnd_err_prime
-                nn_out = 0  # used as output for training the neural network for z_syndromes input
-            if check_coset_value == 'Z':
-                rnd_err_double_prime_z = rnd_err_prime * logicals[1]
-                nn_out = 0
-            else:
-                rnd_err_double_prime_z = rnd_err_prime
-                nn_out = 0  # used as output for training the neural network for z_syndromes input
-            if check_coset_value == 'I':
-                rnd_err_double_prime_x = rnd_err_prime
-                nn_out = 0
+        elif check_coset_value == 'X':
+            rnd_err_double_prime = rnd_err_prime * logicals[0]
+            nn_out = 1  # used as output for training the neural network for z_syndromes input
+        elif check_coset_value == 'Z':
+            rnd_err_double_prime = rnd_err_prime * logicals[1]
+            nn_out = 0
+        elif check_coset_value == 'I':
+            rnd_err_double_prime = rnd_err_prime
+            nn_out = 0
 
-            rnd_err_double_prime = rnd_err_double_prime_x * rnd_err_double_prime_z
-
-        dumb_corr_decomposition = sim_test.XZ_decomposition(rnd_err_double_prime)
-        logical_dumb_error = sim_test.logical_error(rnd_err, dumb_corr_decomposition[0], dumb_corr_decomposition[1])
-        dumb.append(logical_dumb_error)
+        dumb.append(check_coset_value)
 
         # training part of neural network
         # lst_x = [0] * len(x_ancs_keys)
@@ -64,8 +52,8 @@ with open('d=5_p=0.01_x_logical_error_training123.csv', 'wb') as csvfile:
         #    pos = x_ancs_keys.index(key)
         #    lst_x[pos] = 1
 
-        for k in z_synd:
-            key = sim_test.key_from_value(sim_test.layout.map, k)
+        for k in synds[1]:
+            key = sim_test.layout.map.inv[k]
             pos = z_ancs_keys.index(key)
             lst_z[pos] = 1
 
@@ -74,8 +62,7 @@ with open('d=5_p=0.01_x_logical_error_training123.csv', 'wb') as csvfile:
 
         if z_flips not in z_flips_list:
             z_flips_list.append(z_flips)
-            nn_out_list.append(nn_out)
-            spamwriter.writerow([rnd_err] + [z_synd] + [logical_dumb_error] + [z_flips_list[cnt]] + [nn_out_list[cnt]])
+            spamwriter.writerow([rnd_err, synds[1], check_coset_value, z_flips, nn_out])
             cnt += 1
 
         if cycles % 1000 == 0:
