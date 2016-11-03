@@ -27,7 +27,7 @@ class Sim2D(object):
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
         
     def random_error(self):
-        return product(self.error_model.sample())
+        return self.error_model.sample()
     
     def syndromes(self, error):
         x_synd = []
