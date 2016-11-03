@@ -45,30 +45,20 @@ class Sim2D(object):
         Connects all detection events to the closest boundary of the
         appropriate type.
         Simple dumb decoder.
+        Throughout this method, we will treat a Z syndrome as
+        indicating a Z error. 
+        Note that these syndromes are supported on the X ancillas of
+        the layout and vice versa.
         """
+        corr_dict = {'Z': sp.Pauli(), 'X': sp.Pauli()}
+        for err, synd in zip ('ZX', syndromes):
+            crds = [self.layout.map.inv[_] for _ in synd]
+            corr_dict[err] *= product([
+                self.path_pauli(_, self.bdy_info(_)[1], err)
+                for _ in crds
+                ])
 
-        if z_syndrome != []:
-            for i in z_syndrome:
-                key = self.key_from_value(self.layout.map, i)
-                closest_z_bnd = self.bdy_info(key)
-                connect_to_z_bnd = self.path_pauli(list(key), list(closest_z_bnd[1]), 'Z')
-                dumb_correction_z.append(connect_to_z_bnd)
-
-        if x_syndrome != []:
-            for i in x_syndrome:
-                key = self.key_from_value(self.layout.map, i)
-                closest_x_bnd = self.bdy_info(key)
-                connect_to_x_bnd = self.path_pauli(list(key), list(closest_x_bnd[1]), 'X')
-                dumb_correction_x.append(connect_to_x_bnd)
-
-        if dumb_correction_z != []:
-            for i in dumb_correction_z:
-                corr_dumb_dec_z = corr_dumb_dec_z * i
-        if dumb_correction_x != []:
-            for i in dumb_correction_x:
-                corr_dumb_dec_x = corr_dumb_dec_x * i
-
-        return corr_dumb_dec_x, corr_dumb_dec_z
+        return corr_dict['X'], corr_dict['Z']
 
     def graph(self, syndrome):
         """
@@ -194,10 +184,10 @@ class Sim2D(object):
 
         return min_dist, close_pt
 
-    def path_pauli(self, crd_0, crd_1, anc_type):
+    def path_pauli(self, crd_0, crd_1, err_type):
         """
         Returns a minimum-length Pauli between two ancillas, given the
-        type of STABILISER that they measure.
+        type of error that joins the two.
 
         This function is awkward, because it works implicitly on the
         un-rotated surface code, first finding a "corner" (a place on
@@ -222,13 +212,13 @@ class Sim2D(object):
         #path on lattice, uses idxs
         p = [self.layout.map[crd] for crd in pth_0 + pth_1]
         
-        pl = sp.Pauli(p, []) if anc_type == 'Z' else sp.Pauli([], p)
+        pl = sp.Pauli(p, []) if err_type == 'X' else sp.Pauli([], p)
         
         return pl 
 
 
 #-----------------------convenience functions-------------------------#
-product = lambda itrbl: reduce(mul, itrbl, sp.Pauli({},{}))
+product = lambda itrbl: reduce(mul, itrbl, sp.Pauli())
 
 
 def pair_dist(crd_0, crd_1):
