@@ -1,3 +1,4 @@
+from __future__ import division
 import decoding_2d as dc
 import pickle as pkl
 import numpy as np
@@ -63,7 +64,7 @@ def error_rate_plot(flnm, ltr='I'):
         data_dct = pkl.load(phil)
     
     f_keys = fail_keys(data_dct)
-    sb.set_palette(sb.palettes.color_palette('Spectral', len(f_keys)))
+    sb.set_palette(sb.palettes.color_palette('husl', len(f_keys)))
 
     fig = sb.plt.figure()
     for idx, key in enumerate(f_keys):
