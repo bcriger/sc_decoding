@@ -87,27 +87,42 @@ class Sim3D(object):
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
         self.extractor = self.layout.extractor() #convenience        
 
-    def history(self):
+    def history(self, final_perfect_rnd=True):
         """
         Produces a list of sparse_pauli.Paulis that track the error 
         through the `n_meas` measurement rounds. 
         """
-        hist = []
+
+        #ancillas (for restricting error to data bits)
+        ancs = {self.layout.map[anc]
+                for anc in sum(self.layout.ancillas.values(), ())}
+        err_hist = []
+        synd_hist = []
         #perfect (quiescent state) initialization
-        error_state = sp.Pauli() 
-        for meas_dx in xrange(1, n_meas):
+        err = sp.Pauli() 
+        for meas_dx in xrange(self.n_meas):
             #just the ones
-            synd_state = {'x': set(), 'z': set()}
+            synd = {'x': set(), 'z': set()}
             #run circuit
             for stp, mdl in zip(self.extractor, self.gate_error_model):
                 #run timestep, then sample
-                new_synds = cm.apply_step(stp, error_state)
-                error_state *= product(_.sample() for _ in mdl)
-                for ki in synd_state.keys():
-                    synd_state[ki] &= new_synds[ki][1]
+                new_synds, err = cm.apply_step(stp, err)
+                err *= product(_.sample() for _ in mdl)
+                for ki in synd.keys():
+                    synd[ki] |= new_synds[ki][1]
             
-            synd_hist.append(synd_state)
-            err_hist.append(error_state)
+            #last round of circuit, because there are n-1 errs, n gates
+            new_synds, err = cm.apply_step(self.extractor[-1], err)
+            
+            for ki in synd.keys():
+                synd[ki] |= new_synds[ki][1]
+
+            # remove remaining errors on ancilla qubits before append
+            # (they contain no information)
+            err.prep(ancs)
+            
+            synd_hist.append(synd)
+            err_hist.append(err)
 
         return err_hist, synd_hist
 
