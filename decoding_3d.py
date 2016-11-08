@@ -102,7 +102,7 @@ class Sim3D(object):
         err = sp.Pauli() 
         for meas_dx in xrange(self.n_meas):
             #just the ones
-            synd = {'x': set(), 'z': set()}
+            synd = {'X': set(), 'Z': set()}
             #run circuit
             for stp, mdl in zip(self.extractor, self.gate_error_model):
                 #run timestep, then sample
@@ -123,6 +123,14 @@ class Sim3D(object):
             
             synd_hist.append(synd)
             err_hist.append(err)
+
+        if final_perfect_rnd:
+            synd = {'X': set(), 'Z': set()}
+            for ki, val in synd.items():
+                for idx, stab in self.layout.stabilisers()[ki].items():
+                    if err.com(stab) == 1:
+                        val |= {idx}
+            synd_hist.append(synd)
 
         return err_hist, synd_hist
 
