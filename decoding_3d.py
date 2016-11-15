@@ -4,6 +4,8 @@ from collections import Iterable
 import cPickle as pkl
 from decoding_2d import pair_dist
 import error_model as em
+from itertools import combinations
+import networkx as nx
 from operator import mul
 import progressbar as pb
 import sparse_pauli as sp
@@ -149,22 +151,52 @@ class Sim3D(object):
         bdy_info is a function that takes a flip and returns the
         distance to the closest boundary point 
         """
+
+        n = self.layout.n
+        x = self.layout.map.inv
+
         if not(metric):
             metric = lambda flp_1, flp_2: self.manhattan_metric(flp_1, flp_2)
         
         if not bdy_info:
             bdy_info = lambda flp: self.manhattan_bdy_tpl(flp)
 
-        flip_idxs = flat_flips(synds, self.layout.n)
+        flip_idxs = flat_flips(synds, n)
         
         # Note: 'X' syndromes are XXXX stabiliser measurement results.
+        corr = sp.Pauli()
         for stab in 'XZ':
-            verts = flip_idxs
-            verts.extend([(flip, 'b') for flip in flip_idxs])
+            
+            verts = flip_idxs[stab]
+            bdy_verts = ([(flip, 'b') for flip in verts])
+            
+            main_es = [(u, v, metric(u, v)) 
+                                for u, v in combinations(verts, r=2)]
+            bdy_es = [(u, v, bdy_info(u)[0])
+                            for u, v in zip(verts, bdy_verts)]
+            zero_es = [ (u, v, 0)
+                            for u, v in combinations(bdy_verts, r=2)]
+            
+            graph = nx.Graph()
+            graph.add_weighted_edges_from(main_es + bdy_es + zero_es)
+            # Note: code reuse from decoding_2d.Sim2D
+            matching = nx.max_weight_matching(graph, maxcardinality=True)
+            # get rid of non-digraph duplicates 
+            matching = [(u, v) for u, v in matching.items() if u < v]
+            
+            err = 'X' if stab == 'Z' else 'Z'
 
+            for u, v in matching:
+                if isinstance(u, int) & isinstance(v, int):
+                    corr *= self.path_pauli(x[u % n], x[v % n], err)
+                elif isinstance(u, int) ^ isinstance(v, int):
+                    vert = u if isinstance(u, int) else v
+                    bdy_pt = bdy_info(vert)[1]
+                    corr *= self.path_pauli(bdy_pt, x[vert], err)
+                else:
+                    pass #both boundary points, no correction
 
-        #TODO FINISH
-        pass
+        return corr
 
     def manhattan_metric(self, flip_a, flip_b):
         """
