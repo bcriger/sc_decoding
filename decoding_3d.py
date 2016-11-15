@@ -1,11 +1,12 @@
 import circuit_metric as cm 
-import cPickle as pkl
-from collections import Iterable
-import error_model as em
 from circuit_metric.SCLayoutClass import LOCS
+from collections import Iterable
+import cPickle as pkl
+from decoding_2d import pair_dist
+import error_model as em
+from operator import mul
 import progressbar as pb
 import sparse_pauli as sp
-from operator import mul
 
 product = lambda itrbl: reduce(mul, itrbl)
 
@@ -97,7 +98,7 @@ class Sim3D(object):
         ancs = {self.layout.map[anc]
                 for anc in sum(self.layout.ancillas.values(), ())}
         err_hist = []
-        synd_hist = []
+        synd_hist = {'X': [], 'Z': []}
         #perfect (quiescent state) initialization
         err = sp.Pauli() 
         for meas_dx in xrange(self.n_meas):
@@ -120,8 +121,8 @@ class Sim3D(object):
             # remove remaining errors on ancilla qubits before append
             # (they contain no information)
             err.prep(ancs)
-            
-            synd_hist.append(synd)
+            for key in 'XZ':
+                synd_hist[key].append(synd[key])
             err_hist.append(err)
 
         if final_perfect_rnd:
@@ -130,11 +131,12 @@ class Sim3D(object):
                 for idx, stab in self.layout.stabilisers()[ki].items():
                     if err.com(stab) == 1:
                         val |= {idx}
-            synd_hist.append(synd)
+            for key in 'XZ':
+                synd_hist[key].append(synd[key])
 
         return err_hist, synd_hist
 
-    def correction(self, synd_hist, metric=None):
+    def correction(self, synds, metric=None, bdy_info=None):
         """
         Given a set of recorded syndromes, returns a correction by
         minimum-weight perfect matching.
@@ -144,20 +146,73 @@ class Sim3D(object):
         Also, a single correction Pauli is returned. 
         metric should be a function, so you'll have to wrap a matrix 
         in table-lookup if you want to use one.
+        bdy_info is a function that takes a flip and returns the
+        distance to the closest boundary point 
         """
         if not(metric):
-            pass #use manhattan dist
+            metric = lambda flp_1, flp_2: self.manhattan_metric(flp_1, flp_2)
         
-        flip_list = {'x': [], 'z': []}
-        for key in 'xz':
-            #first set of flips at first round
-            flip_list[key] = [synd_hist[key][0]]
-            for t, layer in enumerate(synd_hist[key][1:]):
-                #diffs
-                flip_list[key][t] = synd_hist[key][t] ^ synd_hist[key][t - 1] 
+        if not bdy_info:
+            bdy_info = lambda flp: self.manhattan_bdy_tpl(flp)
+
+        flip_idxs = flat_flips(synds, self.layout.n)
+        
+        # Note: 'X' syndromes are XXXX stabiliser measurement results.
+        for stab in 'XZ':
+            verts = flip_idxs
+            verts.extend([(flip, 'b') for flip in flip_idxs])
+
+
         #TODO FINISH
+        pass
 
+    def manhattan_metric(self, flip_a, flip_b):
+        """
+        Mostly for testing/demonstration, returns a function that takes
+        you straight from flip _indices_ to edge weights for the 
+        NetworkX maximum-weight matching. 
+        
+        I'm making a note here about whether to take the minimum
+        between two cases for timelike syndrome weights. Given that the
+        first round of syndromes count as flips, and the last round is 
+        perfect, I'm only going to use paths "timelike between flips",
+        and I won't give a pair a weight by taking each syndrome flip 
+        out to the time boundary, just the space boundaries.   
 
+        """
+        n = self.layout.n
+        crds = self.layout.map.inv
+
+        # split into (round, idx) pairs:
+        vert_a, idx_a = divmod(flip_a, n)
+        vert_b, idx_b = divmod(flip_b, n)
+
+        # horizontal distance between syndromes, from decoding_2d
+        horz_dist = pair_dist(crds[idx_a], crds[idx_b])
+
+        # vertical
+        vert_dist = abs(vert_a - vert_b)
+
+        return -(horz_dist + vert_dist)
+
+    def manhattan_bdy_tpl(self, flp):
+        """
+        copypaste from decoding_2d.Sim2D.
+        Returns an edge weight for NetworkX maximum-weight matching,
+        hence the minus sign.
+        """
+        crds = self.layout.map.inv
+        horz_dx = flp % self.layout.n
+        crd = crds[horz_dx]
+        
+        min_dist = 4 * self.d #any impossibly large value will do
+        err_type = 'Z' if crd in self.layout.x_ancs() else 'X'
+        for pt in self.layout.boundary_points(err_type):
+            new_dist = pair_dist(crd, pt)
+            if new_dist < min_dist:
+                min_dist, close_pt = new_dist, pt
+
+        return -min_dist, close_pt
 
     def logical_error(self, final_error, corr):
         """
@@ -260,3 +315,19 @@ def fowler_model(extractor, p):
                     ])
 
     return err_list
+
+def flat_flips(synds, n):
+    flip_list = {'X': [], 'Z': []}
+    for err in 'XZ':
+        flip_list[err] = [synds[err][0]]
+        flip_list[err].extend([synds[err][t] ^ synds[err][t - 1]
+                                 for t in range(1, len(synds[err]))])
+    
+    # Convert history of flips to a flat list by adding
+    # n_qubits * t to each element
+    flat_flips = {'X': [], 'Z': []}
+    for err in 'XZ':
+        for t, layer in enumerate(flip_list[err]):
+            flat_flips[err].extend([flp + t * n for flp in layer])
+
+    return flat_flips
