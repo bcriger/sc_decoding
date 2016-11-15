@@ -188,15 +188,52 @@ class Sim3D(object):
 
             for u, v in matching:
                 if isinstance(u, int) & isinstance(v, int):
-                    corr *= self.path_pauli(x[u % n], x[v % n], err)
+                    corr *= self.layout.path_pauli(x[u % n], x[v % n], err)
                 elif isinstance(u, int) ^ isinstance(v, int):
                     vert = u if isinstance(u, int) else v
                     bdy_pt = bdy_info(vert)[1]
-                    corr *= self.path_pauli(bdy_pt, x[vert], err)
+                    corr *= self.layout.path_pauli(bdy_pt, x[vert % n], err)
                 else:
                     pass #both boundary points, no correction
 
         return corr
+
+    def logical_error(self, final_error, corr):
+        """
+        Given an error and a correction, multiplies them and returns a
+        single letter recording the resulting logical error (may be I,
+        X, Y or Z)
+        """
+        anticom_dict = {
+                        ( 0, 0 ) : 'I',
+                        ( 0, 1 ) : 'X',
+                        ( 1, 0 ) : 'Z',
+                        ( 1, 1 ) : 'Y'
+                    }
+        x_bar, z_bar = self.layout.logicals()
+        loop = final_error * corr
+        x_com, z_com = x_bar.com(loop), z_bar.com(loop)
+
+        return anticom_dict[ ( x_com, z_com ) ]
+
+    def run(self, n_trials, progress=True, metric=None, bdy_info=None, final_perfect_rnd=True):
+        """
+        Repeats the following cycle `n_trials` times:
+         + Generate a list of 'n_meas' cumulative errors
+         + determine syndromes by checking stabilisers
+         + make those syndromes into a graph with boundary vertices
+         + match on that graph
+         + check for a logical error by testing anticommutation with
+           the logical paulis
+        """
+        bar = pb.ProgressBar()
+        trials = bar(range(n_trials)) if progress else range(n_trials)
+        for trial in trials:
+            err_hist, synd_hist = self.history(final_perfect_rnd)
+            corr = self.correction(synd_hist, metric, bdy_info)
+            log = self.logical_error(err_hist[-1], corr)
+            self.errors[log] += 1
+        pass
 
     def manhattan_metric(self, flip_a, flip_b):
         """
@@ -245,44 +282,6 @@ class Sim3D(object):
                 min_dist, close_pt = new_dist, pt
 
         return -min_dist, close_pt
-
-    def logical_error(self, final_error, corr):
-        """
-        Given an error and a correction, multiplies them and returns a
-        single letter recording the resulting logical error (may be I,
-        X, Y or Z)
-        """
-        anticom_dict = {
-                        ( 0, 0 ) : 'I',
-                        ( 0, 1 ) : 'X',
-                        ( 1, 0 ) : 'Z',
-                        ( 1, 1 ) : 'Y'
-                    }
-        x_bar, z_bar = self.layout.logicals()
-        loop = final_error * corr
-        x_com, z_com = x_bar.com(loop), z_bar.com(loop)
-
-        return anticom_dict[ ( x_com, z_com ) ]
-
-    def run(self, n_trials):
-        """
-        Repeats the following cycle `n_trials` times:
-         + Generate a list of 'n_meas' cumulative errors
-         + determine syndromes by checking stabilisers
-         + make those syndromes into a graph with boundary vertices
-         + match on that graph
-         + check for a logical error by testing anticommutation with
-           the logical paulis
-        """
-        bar = pb.ProgressBar()
-        trials = bar(range(n_trials)) if progress else range(n_trials)
-        for trial in trials:
-            pass
-        pass
-
-    def save(self, flnm):
-        pass
-
 
 #-----------------------convenience functions-------------------------#
 def pq_model(extractor, p, q):
