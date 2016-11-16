@@ -212,6 +212,13 @@ class Sim3D(object):
                     }
         x_bar, z_bar = self.layout.logicals()
         loop = final_error * corr
+        
+        # test that the loop commutes with the stabilisers at the end
+        for ltr in 'XZ':
+            for stab in self.layout.stabilisers()[ltr].values():
+                if loop.com(stab) == 1:
+                    raise RuntimeError("final error * correction anticommutes with stabilisers")
+        
         x_com, z_com = x_bar.com(loop), z_bar.com(loop)
 
         return anticom_dict[ ( x_com, z_com ) ]

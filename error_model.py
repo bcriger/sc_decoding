@@ -72,6 +72,9 @@ class PauliErrorModel(object):
         return product(map(lambda args: int_to_pauli(*args),
                                 zip(indxs, self.q_lsts)))
 
+    def __repr__(self):
+        return 'p_arr = ' + self.p_arr.__repr__() + ', q_lsts = ' + self.q_lsts.__repr__()
+
 #---------------------------specific models---------------------------#
 
 def iidxz_model(p, q_set):
