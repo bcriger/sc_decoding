@@ -1,11 +1,14 @@
 import circuit_metric as cm 
-import cPickle as pkl
-from collections import Iterable
-import error_model as em
 from circuit_metric.SCLayoutClass import LOCS
+from collections import Iterable
+import cPickle as pkl
+from decoding_2d import pair_dist
+import error_model as em
+from itertools import combinations
+import networkx as nx
+from operator import mul
 import progressbar as pb
 import sparse_pauli as sp
-from operator import mul
 
 product = lambda itrbl: reduce(mul, itrbl)
 
@@ -87,31 +90,55 @@ class Sim3D(object):
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
         self.extractor = self.layout.extractor() #convenience        
 
-    def history(self):
+    def history(self, final_perfect_rnd=True):
         """
         Produces a list of sparse_pauli.Paulis that track the error 
         through the `n_meas` measurement rounds. 
         """
-        hist = []
+
+        #ancillas (for restricting error to data bits)
+        ancs = {self.layout.map[anc]
+                for anc in sum(self.layout.ancillas.values(), ())}
+        err_hist = []
+        synd_hist = {'X': [], 'Z': []}
         #perfect (quiescent state) initialization
-        error_state = sp.Pauli() 
-        for meas_dx in xrange(1, n_meas):
+        err = sp.Pauli() 
+        for meas_dx in xrange(self.n_meas):
             #just the ones
-            synd_state = {'x': set(), 'z': set()}
+            synd = {'X': set(), 'Z': set()}
             #run circuit
             for stp, mdl in zip(self.extractor, self.gate_error_model):
                 #run timestep, then sample
-                new_synds = cm.apply_step(stp, error_state)
-                error_state *= product(_.sample() for _ in mdl)
-                for ki in synd_state.keys():
-                    synd_state[ki] &= new_synds[ki][1]
+                new_synds, err = cm.apply_step(stp, err)
+                err *= product(_.sample() for _ in mdl)
+                for ki in synd.keys():
+                    synd[ki] |= new_synds[ki][1]
             
-            synd_hist.append(synd_state)
-            err_hist.append(error_state)
+            #last round of circuit, because there are n-1 errs, n gates
+            new_synds, err = cm.apply_step(self.extractor[-1], err)
+            
+            for ki in synd.keys():
+                synd[ki] |= new_synds[ki][1]
+
+            # remove remaining errors on ancilla qubits before append
+            # (they contain no information)
+            err.prep(ancs)
+            for key in 'XZ':
+                synd_hist[key].append(synd[key])
+            err_hist.append(err)
+
+        if final_perfect_rnd:
+            synd = {'X': set(), 'Z': set()}
+            for ki, val in synd.items():
+                for idx, stab in self.layout.stabilisers()[ki].items():
+                    if err.com(stab) == 1:
+                        val |= {idx}
+            for key in 'XZ':
+                synd_hist[key].append(synd[key])
 
         return err_hist, synd_hist
 
-    def correction(self, synd_hist, metric=None):
+    def correction(self, synds, metric=None, bdy_info=None):
         """
         Given a set of recorded syndromes, returns a correction by
         minimum-weight perfect matching.
@@ -121,20 +148,55 @@ class Sim3D(object):
         Also, a single correction Pauli is returned. 
         metric should be a function, so you'll have to wrap a matrix 
         in table-lookup if you want to use one.
+        bdy_info is a function that takes a flip and returns the
+        distance to the closest boundary point 
         """
+
+        n = self.layout.n
+        x = self.layout.map.inv
+
         if not(metric):
-            pass #use manhattan dist
+            metric = lambda flp_1, flp_2: self.manhattan_metric(flp_1, flp_2)
         
-        flip_list = {'x': [], 'z': []}
-        for key in 'xz':
-            #first set of flips at first round
-            flip_list[key] = [synd_hist[key][0]]
-            for t, layer in enumerate(synd_hist[key][1:]):
-                #diffs
-                flip_list[key][t] = synd_hist[key][t] ^ synd_hist[key][t - 1] 
-        #TODO FINISH
+        if not bdy_info:
+            bdy_info = lambda flp: self.manhattan_bdy_tpl(flp)
 
+        flip_idxs = flat_flips(synds, n)
+        
+        # Note: 'X' syndromes are XXXX stabiliser measurement results.
+        corr = sp.Pauli()
+        for stab in 'XZ':
+            
+            verts = flip_idxs[stab]
+            bdy_verts = ([(flip, 'b') for flip in verts])
+            
+            main_es = [(u, v, metric(u, v)) 
+                                for u, v in combinations(verts, r=2)]
+            bdy_es = [(u, v, bdy_info(u)[0])
+                            for u, v in zip(verts, bdy_verts)]
+            zero_es = [ (u, v, 0)
+                            for u, v in combinations(bdy_verts, r=2)]
+            
+            graph = nx.Graph()
+            graph.add_weighted_edges_from(main_es + bdy_es + zero_es)
+            # Note: code reuse from decoding_2d.Sim2D
+            matching = nx.max_weight_matching(graph, maxcardinality=True)
+            # get rid of non-digraph duplicates 
+            matching = [(u, v) for u, v in matching.items() if u < v]
+            
+            err = 'X' if stab == 'Z' else 'Z'
 
+            for u, v in matching:
+                if isinstance(u, int) & isinstance(v, int):
+                    corr *= self.layout.path_pauli(x[u % n], x[v % n], err)
+                elif isinstance(u, int) ^ isinstance(v, int):
+                    vert = u if isinstance(u, int) else v
+                    bdy_pt = bdy_info(vert)[1]
+                    corr *= self.layout.path_pauli(bdy_pt, x[vert % n], err)
+                else:
+                    pass #both boundary points, no correction
+
+        return corr
 
     def logical_error(self, final_error, corr):
         """
@@ -154,7 +216,7 @@ class Sim3D(object):
 
         return anticom_dict[ ( x_com, z_com ) ]
 
-    def run(self, n_trials):
+    def run(self, n_trials, progress=True, metric=None, bdy_info=None, final_perfect_rnd=True):
         """
         Repeats the following cycle `n_trials` times:
          + Generate a list of 'n_meas' cumulative errors
@@ -167,12 +229,59 @@ class Sim3D(object):
         bar = pb.ProgressBar()
         trials = bar(range(n_trials)) if progress else range(n_trials)
         for trial in trials:
-            pass
+            err_hist, synd_hist = self.history(final_perfect_rnd)
+            corr = self.correction(synd_hist, metric, bdy_info)
+            log = self.logical_error(err_hist[-1], corr)
+            self.errors[log] += 1
         pass
 
-    def save(self, flnm):
-        pass
+    def manhattan_metric(self, flip_a, flip_b):
+        """
+        Mostly for testing/demonstration, returns a function that takes
+        you straight from flip _indices_ to edge weights for the 
+        NetworkX maximum-weight matching. 
+        
+        I'm making a note here about whether to take the minimum
+        between two cases for timelike syndrome weights. Given that the
+        first round of syndromes count as flips, and the last round is 
+        perfect, I'm only going to use paths "timelike between flips",
+        and I won't give a pair a weight by taking each syndrome flip 
+        out to the time boundary, just the space boundaries.   
 
+        """
+        n = self.layout.n
+        crds = self.layout.map.inv
+
+        # split into (round, idx) pairs:
+        vert_a, idx_a = divmod(flip_a, n)
+        vert_b, idx_b = divmod(flip_b, n)
+
+        # horizontal distance between syndromes, from decoding_2d
+        horz_dist = pair_dist(crds[idx_a], crds[idx_b])
+
+        # vertical
+        vert_dist = abs(vert_a - vert_b)
+
+        return -(horz_dist + vert_dist)
+
+    def manhattan_bdy_tpl(self, flp):
+        """
+        copypaste from decoding_2d.Sim2D.
+        Returns an edge weight for NetworkX maximum-weight matching,
+        hence the minus sign.
+        """
+        crds = self.layout.map.inv
+        horz_dx = flp % self.layout.n
+        crd = crds[horz_dx]
+        
+        min_dist = 4 * self.d #any impossibly large value will do
+        err_type = 'Z' if crd in self.layout.x_ancs() else 'X'
+        for pt in self.layout.boundary_points(err_type):
+            new_dist = pair_dist(crd, pt)
+            if new_dist < min_dist:
+                min_dist, close_pt = new_dist, pt
+
+        return -min_dist, close_pt
 
 #-----------------------convenience functions-------------------------#
 def pq_model(extractor, p, q):
@@ -237,3 +346,19 @@ def fowler_model(extractor, p):
                     ])
 
     return err_list
+
+def flat_flips(synds, n):
+    flip_list = {'X': [], 'Z': []}
+    for err in 'XZ':
+        flip_list[err] = [synds[err][0]]
+        flip_list[err].extend([synds[err][t] ^ synds[err][t - 1]
+                                 for t in range(1, len(synds[err]))])
+    
+    # Convert history of flips to a flat list by adding
+    # n_qubits * t to each element
+    flat_flips = {'X': [], 'Z': []}
+    for err in 'XZ':
+        for t, layer in enumerate(flip_list[err]):
+            flat_flips[err].extend([flp + t * n for flp in layer])
+
+    return flat_flips

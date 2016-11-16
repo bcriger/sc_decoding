@@ -193,16 +193,7 @@ class Sim2D(object):
         this corner. 
         """
         
-        a, b, c, d = crd_0[0], crd_0[1], crd_1[0], crd_1[1]
-        vs = [
-                ( ( d + c - b + a ) / 2, ( d + c + b - a ) / 2 ),
-                ( ( d - c - b - a ) / -2, ( -d + c - b - a ) / -2 )
-            ]
-        
-        if vs[0] in sum(self.layout.ancillas.values(), ()):
-            mid_v = vs[0]
-        else:
-            mid_v = vs[1]
+        mid_v = diag_intersection(crd_0, crd_1, self.layout.ancillas.values())
         
         pth_0, pth_1 = diag_pth(crd_0, mid_v), diag_pth(mid_v, crd_1)
 
@@ -229,11 +220,16 @@ def pair_dist(crd_0, crd_1):
     Note that syndromes at (2,2) and (4,4) in the layout are separated
     by a length-1 chain, because the squares are 2-by-2. 
     """
-    diff = map(abs, (crd_0[0] - crd_1[0], crd_0[1] - crd_1[1]))
-    diag_dist = min(diff)
-    remainder = max([diff[0] - diag_dist, diff[1] - diag_dist])
-    return diag_dist / 2 + remainder
-
+    mid_v = diag_intersection(crd_0, crd_1)
+    diff_vs = [ 
+                [abs(a - b) for a, b in zip(v, mid_v)]
+                for v in [crd_0, crd_1]
+            ]
+    if (diff_vs[0][0] == diff_vs[0][1]) and (diff_vs[1][0] == diff_vs[1][1]):
+        return (diff_vs[0][0] + diff_vs[1][0]) / 2 # TRUST IN GOD
+    else:
+        raise ValueError("math don't work")
+    
 def diag_pth(crd_0, crd_1):
     """
     Produces a path between two points which takes steps (\pm 2, \pm 2)
@@ -244,7 +240,29 @@ def diag_pth(crd_0, crd_1):
     step_x, step_y = map(int, [copysign(2, dx), copysign(2, dy)])
     return zip(range(crd_0[0] + shft_x, crd_1[0], step_x), 
                 range(crd_0[1] + shft_y, crd_1[1], step_y))
+
+def diag_intersection(crd_0, crd_1, ancs=None):
+    """
+    Uses a little linear algebra to determine where diagonal paths that
+    step outward from ancilla qubits intersect.
+    This allows us to reduce the problems of length-finding and
+    path-making to a pair of 1D problems. 
+    """
+    a, b, c, d = crd_0[0], crd_0[1], crd_1[0], crd_1[1]
+    vs = [
+            ( ( d + c - b + a ) / 2, ( d + c + b - a ) / 2 ),
+            ( ( d - c - b - a ) / -2, ( -d + c - b - a ) / -2 )
+        ]
     
+    if ancs:
+        if vs[0] in sum(ancs, ()):
+            mid_v = vs[0]
+        else:
+            mid_v = vs[1]
+    else:
+        mid_v = vs[0]
+
+    return mid_v
 
 #---------------------------------------------------------------------#
 
