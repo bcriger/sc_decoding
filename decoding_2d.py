@@ -156,14 +156,14 @@ class Sim2D(object):
             log = self.logical_error(err, x_corr, z_corr)
             self.errors[log] += 1
             if verbose:
-                print "\n".join([
+                print("\n".join([
                     "error: {}".format(err),
                     "X syndrome: {}".format(x_synd),
                     "Z syndrome: {}".format(z_synd),
                     "X correction: {}".format(x_corr),
                     "Z correction: {}".format(z_corr),
                     "logical error: {}".format(log)
-                    ])
+                    ]))
             
 
     def bdy_info(self, crd):
