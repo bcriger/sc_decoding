@@ -37,7 +37,6 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
 
 if __name__ == '__main__':
     from sys import argv
-    print(argv)
     err_lo, err_hi = map(float, argv[1:3])
     n_points = int(argv[3])
     dists = list(map(int, argv[4].split(' ')))
