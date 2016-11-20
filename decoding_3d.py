@@ -166,23 +166,7 @@ class Sim3D(object):
         # Note: 'X' syndromes are XXXX stabiliser measurement results.
         corr = sp.Pauli()
         for stab in 'XZ':
-            
-            verts = flip_idxs[stab]
-            bdy_verts = ([(flip, 'b') for flip in verts])
-            
-            main_es = [(u, v, metric(u, v)) 
-                                for u, v in combinations(verts, r=2)]
-            bdy_es = [(u, v, bdy_info(u)[0])
-                            for u, v in zip(verts, bdy_verts)]
-            zero_es = [ (u, v, 0)
-                            for u, v in combinations(bdy_verts, r=2)]
-            
-            graph = nx.Graph()
-            graph.add_weighted_edges_from(main_es + bdy_es + zero_es)
-            # Note: code reuse from decoding_2d.Sim2D
-            matching = nx.max_weight_matching(graph, maxcardinality=True)
-            # get rid of non-digraph duplicates 
-            matching = [(u, v) for u, v in matching.items() if u < v]
+            matching = mwpm(flip_idxs[stab], metric, bdy_info)
             
             err = 'X' if stab == 'Z' else 'Z'
 
@@ -196,6 +180,7 @@ class Sim3D(object):
                 else:
                     pass #both boundary points, no correction
 
+        #TODO: Optional return syndrome correction, test inferred syndrome error rate
         return corr
 
     def logical_error(self, final_error, corr):
@@ -369,3 +354,28 @@ def flat_flips(synds, n):
             flat_flips[err].extend([flp + t * n for flp in layer])
 
     return flat_flips
+
+def mwpm(verts, metric, bdy_info):
+    """
+    Does a little bit of the heavy lifting for finding a min-weight
+    perfect matching.
+    """
+    bdy_verts = ([(flip, 'b') for flip in verts])
+    
+    main_es = [(u, v, metric(u, v)) 
+                        for u, v in combinations(verts, r=2)]
+    bdy_es = [(u, v, bdy_info(u)[0])
+                    for u, v in zip(verts, bdy_verts)]
+    zero_es = [ (u, v, 0)
+                    for u, v in combinations(bdy_verts, r=2)]
+    
+    graph = nx.Graph()
+    graph.add_weighted_edges_from(main_es + bdy_es + zero_es)
+    # Note: code reuse from decoding_2d.Sim2D
+    matching = nx.max_weight_matching(graph, maxcardinality=True)
+    # get rid of non-digraph duplicates 
+    matching = [(u, v) for u, v in matching.items() if u < v]
+
+    return matching
+
+#---------------------------------------------------------------------#
