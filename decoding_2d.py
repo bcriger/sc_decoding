@@ -7,6 +7,10 @@ from math import copysign
 import sparse_pauli as sp
 import progressbar as pb
 
+from sys import version_info
+if version_info.major == 3:
+    from functools import reduce
+
 class Sim2D(object):
     """
     This is a pretty bare-bones simulation of the 2D rotated surface
@@ -101,11 +105,14 @@ class Sim2D(object):
         x = self.layout.map.inv
         matching = nx.max_weight_matching(graph, maxcardinality=True)
         
-        # get rid of non-digraph duplicates 
-        matching = [(u, v) for u, v in matching.items() if u < v]
+        # get rid of non-digraph duplicates
+        pairs = []
+        for tpl in matching.items():
+            if tuple(reversed(tpl)) not in pairs:
+                pairs.append(tpl)
         
         pauli_lst = []
-        for u, v in matching:
+        for u, v in pairs:
             if isinstance(u, int) & isinstance(v, int):
                 pauli_lst.append(self.path_pauli(x[u], x[v], err))
             elif isinstance(u, int) ^ isinstance(v, int):
@@ -198,7 +205,7 @@ class Sim2D(object):
         pth_0, pth_1 = diag_pth(crd_0, mid_v), diag_pth(mid_v, crd_1)
 
         #path on lattice, uses idxs
-        p = [self.layout.map[crd] for crd in pth_0 + pth_1]
+        p = [self.layout.map[crd] for crd in list(pth_0) + list(pth_1)]
         
         pl = sp.Pauli(p, []) if err_type == 'X' else sp.Pauli([], p)
         
@@ -249,11 +256,9 @@ def diag_intersection(crd_0, crd_1, ancs=None):
     path-making to a pair of 1D problems. 
     """
     a, b, c, d = crd_0[0], crd_0[1], crd_1[0], crd_1[1]
-    vs = [
-            ( ( d + c - b + a ) / 2, ( d + c + b - a ) / 2 ),
-            ( ( d - c - b - a ) / -2, ( -d + c - b - a ) / -2 )
-        ]
-    
+    vs = [( int(( d + c - b + a ) / 2), int(( d + c + b - a ) / 2 )),
+        ( int(( d - c - b - a ) / -2), int(( -d + c - b - a ) / -2 ))]
+        
     if ancs:
         if vs[0] in sum(ancs, ()):
             mid_v = vs[0]

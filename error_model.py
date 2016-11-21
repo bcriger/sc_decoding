@@ -2,6 +2,10 @@ import numpy as np
 import sparse_pauli as sp
 from operator import mul
 
+from sys import version_info
+if version_info.major == 3:
+    from functools import reduce
+
 product = lambda itrbl: reduce(mul, itrbl)
 
 TOL = 10.**-14
