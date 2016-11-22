@@ -24,7 +24,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
             elif sim_type == 'circ':
-                raise NotImplementedError("Coming Soon!")
+                current_sim = dc3.Sim3D(dist, dist, ('fowler', err))
             
             current_sim.run(n_trials, progress=False)
             failures.append(current_sim.errors)
