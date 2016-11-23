@@ -1,7 +1,6 @@
 import circuit_metric as cm 
 from circuit_metric.SCLayoutClass import LOCS
 from collections import Iterable
-import cPickle as pkl
 from decoding_2d import pair_dist
 import error_model as em
 from itertools import combinations
@@ -9,6 +8,12 @@ import networkx as nx
 from operator import mul
 import progressbar as pb
 import sparse_pauli as sp
+
+from sys import version_info as v
+if v.major == 3:
+    import pickle as pkl
+else:
+    import cPickle as pkl
 
 #__all__ = ['Sim3D', 'flip_graph']
 

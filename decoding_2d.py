@@ -169,14 +169,14 @@ class Sim2D(object):
             self.errors[log] += 1
             if verbose:
                 print("\nTrial status")
-                print "\n".join([
+                print("\n".join([
                     "error: {}".format(err),
                     "X syndrome: {}".format(x_synd),
                     "Z syndrome: {}".format(z_synd),
                     "X correction: {}".format(x_corr),
                     "Z correction: {}".format(z_corr),
                     "logical error: {}".format(log)
-                    ])
+                    ]))
 
         # graphical print of surface with syndromes
         #self.layout.DrawSyndromes( x_graph.nodes(), z_graph.nodes() )
