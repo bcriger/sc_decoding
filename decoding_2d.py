@@ -64,7 +64,7 @@ class Sim2D(object):
 
         return corr_dict['X'], corr_dict['Z']
 
-    def graph(self, syndrome):
+    def graph(self, syndrome, shadow=False):
         """
         returns a NetworkX graph from a given syndrome, on which you 
         can find the MAXIMUM weight perfect matching (This is what
