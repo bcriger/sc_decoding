@@ -6,6 +6,7 @@ from operator import mul
 from math import copysign
 import sparse_pauli as sp
 import progressbar as pb
+import matplotlib.pyplot as plt
 
 from sys import version_info
 if version_info.major == 3:
@@ -17,26 +18,26 @@ class Sim2D(object):
     code. We take a surface code of distance d, and put it up against 
     an IID X/Z error model with probability p. 
     """
-    def __init__(self, d, p):
+    def __init__(self, dx, dy, p):
         #user-input properties
-        self.d = d
-        self.p = p
-        
+        self.dx = dx
+        self.dy = dy
+
         #derived properties
-        self.layout = SCLayout(d)
+        self.layout = SCLayout(dx)
         # self.error_model = em.PauliErrorModel.iidxz_model(p, 
         #     [[self.layout.map[_]] for _ in self.layout.datas])
         self.error_model = em.PauliErrorModel([(1. - p)**2, p * (1. - p), p * (1. - p), p**2], 
             [[self.layout.map[_]] for _ in self.layout.datas])
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
-        
+
     def random_error(self):
         return self.error_model.sample()
-    
+
     def syndromes(self, error):
         x_synd = []
         z_synd = []
-        
+
         for ltr, lst in zip('XZ', [x_synd, z_synd]):
             for idx, stab in self.layout.stabilisers()[ltr].items():
                 if error.com(stab) == 1:
@@ -73,7 +74,7 @@ class Sim2D(object):
         """
         crds = self.layout.map.inv 
         g = nx.Graph()
-        
+
         #vertices directly from syndrome
         g.add_nodes_from(syndrome)
         g.add_weighted_edges_from(
@@ -81,13 +82,13 @@ class Sim2D(object):
             for v1, v2 in 
             it.combinations(syndrome, 2)
             )
-        
+
         #boundary vertices, edges from boundary distance
         for s in syndrome:
             g.add_edge(s, (s, 'b'),
                         weight=-self.bdy_info(crds[s])[0],
                         close_pt=self.bdy_info(crds[s])[1])
-        
+
         #weight-0 edges between boundary vertices
         g.add_weighted_edges_from(
             ((v1, 'b'), (v2, 'b'), 0.)
@@ -104,13 +105,13 @@ class Sim2D(object):
         """
         x = self.layout.map.inv
         matching = nx.max_weight_matching(graph, maxcardinality=True)
-        
+
         # get rid of non-digraph duplicates
         pairs = []
         for tpl in matching.items():
             if tuple(reversed(tpl)) not in pairs:
                 pairs.append(tpl)
-        
+
         pauli_lst = []
         for u, v in pairs:
             if isinstance(u, int) & isinstance(v, int):
@@ -123,7 +124,7 @@ class Sim2D(object):
                 pass #both boundary points, no correction
 
         return product(pauli_lst)
-    
+
     def logical_error(self, error, x_corr, z_corr):
         """
         Given an error and a correction, multiplies them and returns a
@@ -154,6 +155,10 @@ class Sim2D(object):
         """
         bar = pb.ProgressBar()
         trials = bar(range(n_trials)) if progress else range(n_trials)
+
+        #self.layout.Print() # textual print of surface
+        #self.layout.Draw() # graphical print of surface
+
         for trial in trials:
             err = self.random_error()
             x_synd, z_synd = self.syndromes(err)
@@ -163,15 +168,18 @@ class Sim2D(object):
             log = self.logical_error(err, x_corr, z_corr)
             self.errors[log] += 1
             if verbose:
-                print("\n".join([
+                print("\nTrial status")
+                print "\n".join([
                     "error: {}".format(err),
                     "X syndrome: {}".format(x_synd),
                     "Z syndrome: {}".format(z_synd),
                     "X correction: {}".format(x_corr),
                     "Z correction: {}".format(z_corr),
                     "logical error: {}".format(log)
-                    ]))
-            
+                    ])
+
+        # graphical print of surface with syndromes
+        #self.layout.DrawSyndromes( x_graph.nodes(), z_graph.nodes() )
 
     def bdy_info(self, crd):
         """
@@ -179,7 +187,7 @@ class Sim2D(object):
         one of the acceptable boundary vertices, depending on 
         syndrome type (X or Z). 
         """
-        min_dist = 4 * self.d #any impossibly large value will do
+        min_dist = 4 * self.dx #any impossibly large value will do
         err_type = 'Z' if crd in self.layout.x_ancs() else 'X'
         for pt in self.layout.boundary_points(err_type):
             new_dist = pair_dist(crd, pt)
@@ -197,19 +205,19 @@ class Sim2D(object):
         un-rotated surface code, first finding a "corner" (a place on
         the lattice for the path to turn 90 degrees), then producing
         two diagonal paths on the rotated lattice that go to and from
-        this corner. 
+        this corner.
         """
-        
+
         mid_v = diag_intersection(crd_0, crd_1, self.layout.ancillas.values())
-        
+
         pth_0, pth_1 = diag_pth(crd_0, mid_v), diag_pth(mid_v, crd_1)
 
         #path on lattice, uses idxs
         p = [self.layout.map[crd] for crd in list(pth_0) + list(pth_1)]
-        
+
         pl = sp.Pauli(p, []) if err_type == 'X' else sp.Pauli([], p)
-        
-        return pl 
+
+        return pl
 
 
 #-----------------------convenience functions-------------------------#
@@ -258,7 +266,7 @@ def diag_intersection(crd_0, crd_1, ancs=None):
     a, b, c, d = crd_0[0], crd_0[1], crd_1[0], crd_1[1]
     vs = [( int(( d + c - b + a ) / 2), int(( d + c + b - a ) / 2 )),
         ( int(( d - c - b - a ) / -2), int(( -d + c - b - a ) / -2 ))]
-        
+
     if ancs:
         if vs[0] in sum(ancs, ()):
             mid_v = vs[0]
