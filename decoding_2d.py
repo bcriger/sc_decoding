@@ -156,7 +156,7 @@ class Sim2D(object):
         bar = pb.ProgressBar()
         trials = bar(range(n_trials)) if progress else range(n_trials)
 
-        self.layout.Print() # textual print of surface
+        #self.layout.Print() # textual print of surface
         #self.layout.Draw() # graphical print of surface
 
         for trial in trials:
@@ -167,8 +167,6 @@ class Sim2D(object):
             z_corr = self.correction(z_graph, 'X')
             log = self.logical_error(err, x_corr, z_corr)
             self.errors[log] += 1
-            print "x_graph: ", x_graph.edges()
-            print "z_graph: ", z_graph.edges()
             if verbose:
                 print("\nTrial status")
                 print "\n".join([
@@ -181,7 +179,7 @@ class Sim2D(object):
                     ])
 
         # graphical print of surface with syndromes
-        self.layout.DrawSyndromes( x_graph.nodes(), z_graph.nodes() )
+        #self.layout.DrawSyndromes( x_graph.nodes(), z_graph.nodes() )
 
     def bdy_info(self, crd):
         """
