@@ -2,6 +2,10 @@ import numpy as np
 import sparse_pauli as sp
 from operator import mul
 
+from sys import version_info
+if version_info.major == 3:
+    from functools import reduce
+
 product = lambda itrbl: reduce(mul, itrbl)
 
 TOL = 10.**-14
@@ -71,6 +75,9 @@ class PauliErrorModel(object):
         indxs = [int_sample(self.p_arr) for _ in self.q_lsts]
         return product(map(lambda args: int_to_pauli(*args),
                                 zip(indxs, self.q_lsts)))
+
+    def __repr__(self):
+        return 'p_arr = ' + self.p_arr.__repr__() + ', q_lsts = ' + self.q_lsts.__repr__()
 
 #---------------------------specific models---------------------------#
 
