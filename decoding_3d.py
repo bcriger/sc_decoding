@@ -12,6 +12,7 @@ import sparse_pauli as sp
 from sys import version_info as v
 if v.major == 3:
     import pickle as pkl
+    from functools import reduce
 else:
     import cPickle as pkl
 
@@ -110,7 +111,7 @@ class Sim3D(object):
         synd_hist = {'X': [], 'Z': []}
         #perfect (quiescent state) initialization
         err = sp.Pauli() 
-        for meas_dx in xrange(self.n_meas):
+        for meas_dx in range(self.n_meas):
             #just the ones
             synd = {'X': set(), 'Z': set()}
             #run circuit
@@ -371,9 +372,12 @@ def mwpm(verts, metric, bdy_info):
     # Note: code reuse from decoding_2d.Sim2D
     matching = nx.max_weight_matching(graph, maxcardinality=True)
     # get rid of non-digraph duplicates 
-    matching = [(u, v) for u, v in matching.items() if u < v]
+    pairs = []
+    for tpl in matching.items():
+        if tuple(reversed(tpl)) not in pairs:
+            pairs.append(tpl)
 
-    return matching
+    return pairs
 
 def flip_graph(verts, metric, bdy_info, fmt='qec', n=None, crd_dct=None):
     """
