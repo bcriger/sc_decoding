@@ -1,19 +1,22 @@
 import decoding_2d as dc
 
-dx=5
-dy=4
-p=0.09
-trials=1
+dx=30
+dy=30
+p=0.05
+# useBlossom = True
+useBlossom = False
+trials=10
 
-print "Surface Code Simulation"
+print("Surface Code Simulation")
 
-print "\n".join([
+print("\n".join([
     "Starting simulation",
     "trials : {}".format(trials),
     "dx : {}".format(dx),
     "dy : {}".format(dy),
-    "p : {}".format(p)
-    ])
+    "p : {}".format(p),
+    "useBlossom : {}".format(useBlossom)
+    ]))
 
-sim = dc.Sim2D(dx, dy, p)
-sim.run(trials, True, False)
+sim = dc.Sim2D(dx, dy, p, useBlossom)
+sim.run(trials, False, False)

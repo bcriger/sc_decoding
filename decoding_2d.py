@@ -1,5 +1,5 @@
 from circuit_metric.SCLayoutClass import SCLayout
-import error_model as em 
+import error_model as em
 import itertools as it
 import networkx as nx
 from operator import mul
@@ -8,6 +8,8 @@ import sparse_pauli as sp
 import progressbar as pb
 import matplotlib.pyplot as plt
 
+from cffi import FFI
+
 from sys import version_info
 if version_info.major == 3:
     from functools import reduce
@@ -15,21 +17,42 @@ if version_info.major == 3:
 class Sim2D(object):
     """
     This is a pretty bare-bones simulation of the 2D rotated surface
-    code. We take a surface code of distance d, and put it up against 
-    an IID X/Z error model with probability p. 
+    code. We take a surface code of distance d, and put it up against
+    an IID X/Z error model with probability p.
     """
-    def __init__(self, dx, dy, p):
+    def __init__(self, dx, dy, p, useBlossom=False):
         #user-input properties
         self.dx = dx
         self.dy = dy
+        self.useBlossom = useBlossom
 
         #derived properties
         self.layout = SCLayout(dx)
-        # self.error_model = em.PauliErrorModel.iidxz_model(p, 
+        # self.error_model = em.PauliErrorModel.iidxz_model(p,
         #     [[self.layout.map[_]] for _ in self.layout.datas])
-        self.error_model = em.PauliErrorModel([(1. - p)**2, p * (1. - p), p * (1. - p), p**2], 
+        self.error_model = em.PauliErrorModel([(1. - p)**2, p * (1. - p), p * (1. - p), p**2],
             [[self.layout.map[_]] for _ in self.layout.datas])
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
+
+        if self.useBlossom:
+            # load C blossom library
+            self.ffi = FFI()
+            self.blossom = self.ffi.dlopen('./blossom5/libblossom.so')
+            # print('Loaded lib {0}'.format(self.blossom))
+
+            self.ffi.cdef('''
+            typedef struct {
+                int uid;
+                int vid;
+                int weight;
+            } Edge;
+
+            int Init();
+            int Process(int node_num, int edge_num, Edge *edges);
+            int PrintMatching();
+            int GetMatching(int * matching);
+            int Clean();
+            ''')
 
     def random_error(self):
         return self.error_model.sample()
@@ -51,7 +74,7 @@ class Sim2D(object):
         appropriate type.
         Simple dumb decoder.
         Throughout this method, we will treat a Z syndrome as
-        indicating a Z error. 
+        indicating a Z error.
         Note that these syndromes are supported on the X ancillas of
         the layout and vice versa.
         """
@@ -67,19 +90,19 @@ class Sim2D(object):
 
     def graph(self, syndrome, shadow=False):
         """
-        returns a NetworkX graph from a given syndrome, on which you 
+        returns a NetworkX graph from a given syndrome, on which you
         can find the MAXIMUM weight perfect matching (This is what
-        NetworkX does). We use negative edge weights to make this 
+        NetworkX does). We use negative edge weights to make this
         happen.
         """
-        crds = self.layout.map.inv 
+        crds = self.layout.map.inv
         g = nx.Graph()
 
         #vertices directly from syndrome
         g.add_nodes_from(syndrome)
         g.add_weighted_edges_from(
             (v1, v2, -pair_dist(crds[v1], crds[v2]))
-            for v1, v2 in 
+            for v1, v2 in
             it.combinations(syndrome, 2)
             )
 
@@ -92,7 +115,7 @@ class Sim2D(object):
         #weight-0 edges between boundary vertices
         g.add_weighted_edges_from(
             ((v1, 'b'), (v2, 'b'), 0.)
-            for v1, v2 in 
+            for v1, v2 in
             it.combinations(syndrome, 2)
             )
         return g
@@ -101,17 +124,64 @@ class Sim2D(object):
         """
         Given a syndrome graph with negative edge weights, finds the
         maximum-weight perfect matching and produces a
-        sparse_pauli.Pauli 
+        sparse_pauli.Pauli
         """
+
+        if self.useBlossom:
+            #-----------  c processing
+            # print('C Processing')
+
+            # print( 'graph nodes: {0}'.format( graph.nodes() ) )
+            # print( 'graph edges: {0}'.format( graph.edges() ) )
+
+            node_num = len(graph.nodes());
+            edge_num = len(graph.edges());
+            # print( 'no of nodes : {0}, no of edges : {1}'.format(node_num,edge_num) )
+            edges = self.ffi.new('Edge[%d]' % (edge_num) )
+            cmatching = self.ffi.new('int[%d]' % (2*node_num) )
+
+            node2id = { val: index for index, val in enumerate(graph.nodes()) }
+            id2node = {v: k for k, v in node2id.iteritems()}
+            # print(node2id)
+
+            e = 0
+            for u,v in graph.edges():
+                uid = int(node2id[u])
+                vid = int(node2id[v])
+                wt = -int( graph[u][v]['weight'])
+                # print('weight of edge[{0}][{1}] = {2}'.format( uid, vid, wt) )
+                edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt;
+                e = e+1
+
+            # print('printing edges before calling blossom')
+            # for e in range(edge_num):
+            #     print(edges[e].uid, edges[e].vid, edges[e].weight)
+
+            retVal = self.blossom.Init()
+            retVal = self.blossom.Process(node_num, edge_num, edges)
+            # retVal = self.blossom.PrintMatching()
+            nMatching = self.blossom.GetMatching(cmatching)
+            retVal = self.blossom.Clean()
+
+            pairs = []
+            # print('recieved C matching :')
+            for i in range(0,nMatching,2):
+                u,v = id2node[cmatching[i]], id2node[cmatching[i+1]]
+                pairs.append( (u,v) )
+                # print( '{0}, {1} '.format(u,v) )
+
+            #----------- end of c processing
+        else:
+            matching = nx.max_weight_matching(graph, maxcardinality=True)
+
+            # get rid of non-digraph duplicates
+            pairs = []
+            for tpl in matching.items():
+                if tuple(reversed(tpl)) not in pairs:
+                    pairs.append(tpl)
+                    # print(tpl)
+
         x = self.layout.map.inv
-        matching = nx.max_weight_matching(graph, maxcardinality=True)
-
-        # get rid of non-digraph duplicates
-        pairs = []
-        for tpl in matching.items():
-            if tuple(reversed(tpl)) not in pairs:
-                pairs.append(tpl)
-
         pauli_lst = []
         for u, v in pairs:
             if isinstance(u, int) & isinstance(v, int):
@@ -184,8 +254,8 @@ class Sim2D(object):
     def bdy_info(self, crd):
         """
         Returns the minimum distance between the input co-ordinate and
-        one of the acceptable boundary vertices, depending on 
-        syndrome type (X or Z). 
+        one of the acceptable boundary vertices, depending on
+        syndrome type (X or Z).
         """
         min_dist = 4 * self.dx #any impossibly large value will do
         err_type = 'Z' if crd in self.layout.x_ancs() else 'X'
@@ -226,17 +296,17 @@ product = lambda itrbl: reduce(mul, itrbl, sp.Pauli())
 
 def pair_dist(crd_0, crd_1):
     """
-    Returns the distance between syndromes of the same type on the 
+    Returns the distance between syndromes of the same type on the
     rotated surface code. This distance is calculated by first taking
-    as many steps as possible diagonally (the length of each of these 
+    as many steps as possible diagonally (the length of each of these
     steps is 1), then finishing horizontally/vertically (each of these
-    steps is length 2). 
+    steps is length 2).
 
     Note that syndromes at (2,2) and (4,4) in the layout are separated
-    by a length-1 chain, because the squares are 2-by-2. 
+    by a length-1 chain, because the squares are 2-by-2.
     """
     mid_v = diag_intersection(crd_0, crd_1)
-    diff_vs = [ 
+    diff_vs = [
                 [abs(a - b) for a, b in zip(v, mid_v)]
                 for v in [crd_0, crd_1]
             ]
@@ -244,7 +314,7 @@ def pair_dist(crd_0, crd_1):
         return (diff_vs[0][0] + diff_vs[1][0]) / 2 # TRUST IN GOD
     else:
         raise ValueError("math don't work")
-    
+
 def diag_pth(crd_0, crd_1):
     """
     Produces a path between two points which takes steps (\pm 2, \pm 2)
@@ -253,7 +323,7 @@ def diag_pth(crd_0, crd_1):
     dx, dy = crd_1[0] - crd_0[0], crd_1[1] - crd_0[1]
     shft_x, shft_y = map(int, [copysign(1, dx), copysign(1, dy)])
     step_x, step_y = map(int, [copysign(2, dx), copysign(2, dy)])
-    return zip(range(crd_0[0] + shft_x, crd_1[0], step_x), 
+    return zip(range(crd_0[0] + shft_x, crd_1[0], step_x),
                 range(crd_0[1] + shft_y, crd_1[1], step_y))
 
 def diag_intersection(crd_0, crd_1, ancs=None):
@@ -261,7 +331,7 @@ def diag_intersection(crd_0, crd_1, ancs=None):
     Uses a little linear algebra to determine where diagonal paths that
     step outward from ancilla qubits intersect.
     This allows us to reduce the problems of length-finding and
-    path-making to a pair of 1D problems. 
+    path-making to a pair of 1D problems.
     """
     a, b, c, d = crd_0[0], crd_0[1], crd_1[0], crd_1[1]
     vs = [( int(( d + c - b + a ) / 2), int(( d + c + b - a ) / 2 )),
@@ -278,5 +348,3 @@ def diag_intersection(crd_0, crd_1, ancs=None):
     return mid_v
 
 #---------------------------------------------------------------------#
-
-

@@ -6,7 +6,7 @@ import numpy as np
 def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz'):
     """
     Makes a bunch of simulation objects and runs them, based on input
-    parameters. 
+    parameters.
     """
     sim_type = sim_type.lower()
     if sim_type not in ['iidxz', 'pq', 'circ']:
@@ -19,7 +19,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
         failures = []
         for err in errs:
             if sim_type == 'iidxz':
-                current_sim = dc2.Sim2D(dist, err)
+                current_sim = dc2.Sim2D(dist, dist, err)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
             elif sim_type == 'circ':
@@ -52,14 +52,14 @@ def run_batch_par(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type, nTh
 
 if __name__ == '__main__':
     from sys import argv
-    nThreads = 12
+    nThreads = 8
     n_trials =nThreads*16 # keep it a multiple of nThreads for now
     err_lo = 0.01
     err_hi = 0.03
     n_points = 30
-    dists = [5]
+    dists = [25]
     flnm = 'out.dat'
-    sim_type = 'pq'
+    sim_type = 'iidxz'
 
     # just for benchmarking/testing
     # comment for actual run
