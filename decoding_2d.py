@@ -224,7 +224,7 @@ class Sim2D(object):
            the logical paulis
         """
         bar = pb.ProgressBar()
-        trials = bar(range(n_trials)) if progress else range(n_trials)
+        trials = bar(range( int(n_trials) )) if progress else range( int(n_trials) )
 
         #self.layout.Print() # textual print of surface
         #self.layout.Draw() # graphical print of surface

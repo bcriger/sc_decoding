@@ -63,14 +63,16 @@ if __name__ == '__main__':
 
     # just for benchmarking/testing
     # comment for actual run
+    print("Sequential execution ...")
     start = timer()
     run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type)
     end = timer()
     seqtime = (end-start)
-    print "Sequential execution took : ", seqtime*1e3, " ms"
+    print("Sequential execution took : {0} ms".format(seqtime*1e3))
 
+    print("Parallel execution ...")
     start = timer()
     run_batch_par(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type, nThreads)
     end = timer()
     partime = (end-start)
-    print "Parallel execution on ", nThreads, " threads took : ", partime*1e3, " ms"
+    print("Parallel execution on {0} threads took {1} ms ".format(nThreads,partime*1e3) )
