@@ -4,7 +4,7 @@ SOURCES := $(foreach dir, $(DIRS), $(wildcard $(dir)/*.cpp))
 OBJS := $(patsubst %.cpp, %.o, $(SOURCES))
 
 CFLAGS := -O3 -D_NDEBUG
-CXX ?= g++
+CXX = g++-5
 LIBS := -lm
 INCLUDES :=
 LIBDIR :=

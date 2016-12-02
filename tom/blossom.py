@@ -13,14 +13,15 @@ Supports adding single vertices at a time, and memory management.
 A wrapper has been added to insert an entire weight matrix at once,
 which is in the tests folder of the quantumerrorcorrection package.
 """
-#Python 2.7 import
-#from __future__ import division
+from __future__ import division
 import numpy as np
 from collections import deque
-# Python 2.7 import
-#import Queue as queue
-# Python 3 import
-import queue
+
+from sys import version_info as v
+if v[0] == 2: 
+    import Queue as queue
+else:
+    import queue
 
 
 class Bloss:

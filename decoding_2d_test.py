@@ -1,10 +1,11 @@
 import decoding_2d as dc
+import cProfile as prf
 
 dx=30
 dy=30
 p=0.05
-# useBlossom = True
-useBlossom = False
+useBlossom = True
+# useBlossom = False
 trials=10
 
 print("Surface Code Simulation")
@@ -19,4 +20,4 @@ print("\n".join([
     ]))
 
 sim = dc.Sim2D(dx, dy, p, useBlossom)
-sim.run(trials, False, False)
+prf.run("sim.run(trials, False, False)", "imran_blsm.prof")

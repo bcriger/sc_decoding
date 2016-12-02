@@ -2,6 +2,8 @@ import decoding_2d as dc2
 import decoding_3d as dc3
 import pickle as pkl
 import numpy as np
+from multiprocessing import Process
+from timeit import default_timer as timer
 
 def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz'):
     """
@@ -34,8 +36,6 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
 
     pass
 
-from multiprocessing import Process
-from timeit import default_timer as timer
 
 def run_batch_par(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type, nThreads):
     jobs = []
