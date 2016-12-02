@@ -52,7 +52,7 @@ def run_batch_par(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type, nTh
 
 if __name__ == '__main__':
     from sys import argv
-    nThreads = 8
+    nThreads = 4
     n_trials =nThreads*16 # keep it a multiple of nThreads for now
     err_lo = 0.01
     err_hi = 0.03

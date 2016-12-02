@@ -20,7 +20,7 @@ class Sim2D(object):
     code. We take a surface code of distance d, and put it up against
     an IID X/Z error model with probability p.
     """
-    def __init__(self, dx, dy, p, useBlossom=False):
+    def __init__(self, dx, dy, p, useBlossom=True):
         #user-input properties
         self.dx = dx
         self.dy = dy
