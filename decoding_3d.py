@@ -1,7 +1,6 @@
 import circuit_metric as cm 
 from circuit_metric.SCLayoutClass import LOCS
 from collections import Iterable
-import cPickle as pkl
 from decoding_2d import pair_dist
 import error_model as em
 from itertools import combinations
@@ -9,6 +8,15 @@ import networkx as nx
 from operator import mul
 import progressbar as pb
 import sparse_pauli as sp
+
+from sys import version_info as v
+if v.major == 3:
+    import pickle as pkl
+    from functools import reduce
+else:
+    import cPickle as pkl
+
+#__all__ = ['Sim3D', 'flip_graph']
 
 product = lambda itrbl: reduce(mul, itrbl)
 
@@ -103,7 +111,7 @@ class Sim3D(object):
         synd_hist = {'X': [], 'Z': []}
         #perfect (quiescent state) initialization
         err = sp.Pauli() 
-        for meas_dx in xrange(self.n_meas):
+        for meas_dx in range(self.n_meas):
             #just the ones
             synd = {'X': set(), 'Z': set()}
             #run circuit
@@ -360,22 +368,75 @@ def mwpm(verts, metric, bdy_info):
     Does a little bit of the heavy lifting for finding a min-weight
     perfect matching.
     """
-    bdy_verts = ([(flip, 'b') for flip in verts])
-    
-    main_es = [(u, v, metric(u, v)) 
-                        for u, v in combinations(verts, r=2)]
-    bdy_es = [(u, v, bdy_info(u)[0])
-                    for u, v in zip(verts, bdy_verts)]
-    zero_es = [ (u, v, 0)
-                    for u, v in combinations(bdy_verts, r=2)]
-    
-    graph = nx.Graph()
-    graph.add_weighted_edges_from(main_es + bdy_es + zero_es)
+    graph = flip_graph(verts, metric, bdy_info)
     # Note: code reuse from decoding_2d.Sim2D
     matching = nx.max_weight_matching(graph, maxcardinality=True)
     # get rid of non-digraph duplicates 
-    matching = [(u, v) for u, v in matching.items() if u < v]
+    pairs = []
+    for tpl in matching.items():
+        if tuple(reversed(tpl)) not in pairs:
+            pairs.append(tpl)
 
-    return matching
+    return pairs
+
+def flip_graph(verts, metric, bdy_info, fmt='qec', n=None, crd_dct=None):
+    """
+    Constructs a MWPM-able graph for a set of flips on a lattice with
+    open BC by:
+     + Adding a boundary vertex for every vertex
+     + connecting all pairs of flips with edges whose weight is 
+       -dist(flip, other_flip) for a distance function given by the
+       metric
+     + connecting each vertex to its corresponding boundary vertex with
+       an edge whose weight is given by bdy_info, and
+     + connecting all boundary vertices with weight-0 edges.
+
+    Two formats are allowed for debuggability. 'qec' is the default
+    format, it uses unique integers as vertex labels. 'dbg' is the
+    other format, it uses 3D coordinates (x, y, t) as vertex labels.
+    If 'dbg' is selected, two additional arguments must be supplied; 
+    the number of qubits in the layout (for separating time and space),
+    and the map from indices to coordinates (for separating x and y)
+    """
+    bdy_verts = ([(flip, 'b') for flip in verts])
+    
+    if fmt == 'dbg':
+        if not(n and crd_dct):
+            raise ValueError("Gotta have n and crd_dct if I have dbg")
+        xyt = lambda u: crd_tpl(u, n, crd_dct)
+
+    if fmt == 'dbg':
+        main_es = [(xyt(u), xyt(v), metric(u, v)) 
+                        for u, v in combinations(verts, r=2)]
+        bdy_es = [(xyt(u), xyt(v), bdy_info(u)[0])
+                    for u, v in zip(verts, bdy_verts)]
+        zero_es = [ (xyt(u), xyt(v), 0)
+                    for u, v in combinations(bdy_verts, r=2)]
+    else:
+        main_es = [(u, v, metric(u, v)) 
+                        for u, v in combinations(verts, r=2)]
+        bdy_es = [(u, v, bdy_info(u)[0])
+                    for u, v in zip(verts, bdy_verts)]
+        zero_es = [ (u, v, 0)
+                    for u, v in combinations(bdy_verts, r=2)]    
+    
+    graph = nx.Graph()
+    graph.add_weighted_edges_from(main_es + bdy_es + zero_es)
+
+    return graph
+
+def crd_tpl(idx, n, crd_dct):
+    """
+    returns a tuple (x, y, t) given a flip index by divmodding with n
+    and mapping the non-time portion onto lattice co-ordinates.
+    """
+    if isinstance(idx, int):
+        t, lattice_idx = divmod(idx, n)
+        x, y = crd_dct[lattice_idx]
+        return (x, y, t)
+    else:
+        t, lattice_idx = divmod(idx[0], n)
+        x, y = crd_dct[lattice_idx]
+        return (x, y, t, 'b')
 
 #---------------------------------------------------------------------#
