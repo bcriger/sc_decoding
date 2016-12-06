@@ -1,4 +1,5 @@
 from circuit_metric.SCLayoutClass import SCLayout
+from decoding_utils import blossom_path, cdef_str
 import error_model as em
 import itertools as it
 import networkx as nx
@@ -27,9 +28,7 @@ class Sim2D(object):
         self.useBlossom = useBlossom
 
         #derived properties
-        self.layout = SCLayout(dx)
-        # self.error_model = em.PauliErrorModel.iidxz_model(p,
-        #     [[self.layout.map[_]] for _ in self.layout.datas])
+        self.layout = SCLayout(dx) #TODO dy
         self.error_model = em.PauliErrorModel([(1. - p)**2, p * (1. - p), p * (1. - p), p**2],
             [[self.layout.map[_]] for _ in self.layout.datas])
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
@@ -37,22 +36,10 @@ class Sim2D(object):
         if self.useBlossom:
             # load C blossom library
             self.ffi = FFI()
-            self.blossom = self.ffi.dlopen('./blossom5/libblossom.so')
+            self.blossom = self.ffi.dlopen(blossom_path)
             # print('Loaded lib {0}'.format(self.blossom))
 
-            self.ffi.cdef('''
-            typedef struct {
-                int uid;
-                int vid;
-                int weight;
-            } Edge;
-
-            int Init();
-            int Process(int node_num, int edge_num, Edge *edges);
-            int PrintMatching();
-            int GetMatching(int * matching);
-            int Clean();
-            ''')
+            self.ffi.cdef(cdef_str)
 
     def random_error(self):
         return self.error_model.sample()
@@ -151,7 +138,7 @@ class Sim2D(object):
                 wt = -int( graph[u][v]['weight'])
                 # print('weight of edge[{0}][{1}] = {2}'.format( uid, vid, wt) )
                 edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt;
-                e = e+1
+                e += 1
 
             # print('printing edges before calling blossom')
             # for e in range(edge_num):

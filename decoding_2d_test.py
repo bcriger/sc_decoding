@@ -2,12 +2,12 @@ import decoding_2d as dc
 import cProfile as prf
 from timeit import default_timer as timer
 
-dx=35
-dy=35
-p=0.05
+dx=19
+dy=19
+p=0.1
 useBlossom = True
 # useBlossom = False
-trials=10
+trials=50
 
 print("Surface Code Simulation")
 

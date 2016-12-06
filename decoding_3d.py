@@ -1,7 +1,9 @@
+from cffi import FFI
 import circuit_metric as cm 
 from circuit_metric.SCLayoutClass import LOCS
 from collections import Iterable
 from decoding_2d import pair_dist
+from decoding_utils import blossom_path, cdef_str
 import error_model as em
 from itertools import combinations
 import networkx as nx
@@ -31,7 +33,7 @@ class Sim3D(object):
                     Carlo
         save:       pickle parameters and derived statistics
     """
-    def __init__(self, d, n_meas, gate_error_model):
+    def __init__(self, d, n_meas, gate_error_model, use_blossom=True):
         """
         Produces a simulation object which can then be run, examined
         and saved.
@@ -53,7 +55,9 @@ class Sim3D(object):
                                 'fowler' are permitted, they correspond
                                 to internal models replicating the 
                                 3DZ2RPGM and the 
-                                Fowler/Stephens/Groszkowski paper. 
+                                Fowler/Stephens/Groszkowski paper.
+            use_blossom:        Boolean that says whether to use C++
+                                (if True) or NetworkX (if False).
         """
         if not(isinstance(d, int)) or (d <= 1):
             raise ValueError("d must be an integer at least 2, "
@@ -96,7 +100,17 @@ class Sim3D(object):
         
         #extra derived properties
         self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
-        self.extractor = self.layout.extractor() #convenience        
+        self.extractor = self.layout.extractor() #convenience
+        
+        self.use_blossom = use_blossom
+        if self.use_blossom:
+            self.ffi = FFI()
+            self.blossom = self.ffi.dlopen(blossom_path)
+            self.ffi.cdef(cdef_str)
+        else:
+            self.ffi = None
+            self.blossom = None
+
 
     def history(self, final_perfect_rnd=True):
         """
@@ -174,7 +188,8 @@ class Sim3D(object):
         # Note: 'X' syndromes are XXXX stabiliser measurement results.
         corr = sp.Pauli()
         for stab in 'XZ':
-            matching = mwpm(flip_idxs[stab], metric, bdy_info)
+            matching = mwpm(flip_idxs[stab], metric, bdy_info,
+                            self.use_blossom, self.ffi, self.blossom)
             
             err = 'X' if stab == 'Z' else 'Z'
 
@@ -363,19 +378,47 @@ def flat_flips(synds, n):
 
     return flat_flips
 
-def mwpm(verts, metric, bdy_info):
+def mwpm(verts, metric, bdy_info, use_blossom, ffi=None, blossom=None):
     """
     Does a little bit of the heavy lifting for finding a min-weight
     perfect matching.
     """
     graph = flip_graph(verts, metric, bdy_info)
-    # Note: code reuse from decoding_2d.Sim2D
-    matching = nx.max_weight_matching(graph, maxcardinality=True)
-    # get rid of non-digraph duplicates 
-    pairs = []
-    for tpl in matching.items():
-        if tuple(reversed(tpl)) not in pairs:
-            pairs.append(tpl)
+    if use_blossom:
+        node_num = len(graph.nodes());
+        edge_num = len(graph.edges());
+        edges = ffi.new('Edge[%d]' % (edge_num) )
+        cmatching = ffi.new('int[%d]' % (2*node_num) )
+
+        node2id = { val: index for index, val in enumerate(graph.nodes()) }
+        id2node = {v: k for k, v in node2id.iteritems()}
+        
+        e = 0
+        for u,v in graph.edges():
+            uid = int(node2id[u])
+            vid = int(node2id[v])
+            wt = -int( graph[u][v]['weight'])
+            # print('weight of edge[{0}][{1}] = {2}'.format( uid, vid, wt) )
+            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt;
+            e += 1
+
+        retVal = blossom.Init()
+        retVal = blossom.Process(node_num, edge_num, edges)
+        nMatching = blossom.GetMatching(cmatching)
+        retVal = blossom.Clean()
+
+        pairs = []
+        # print('recieved C matching :')
+        for i in range(0,nMatching,2):
+            u,v = id2node[cmatching[i]], id2node[cmatching[i+1]]
+            pairs.append( (u,v) )
+    else:
+        matching = nx.max_weight_matching(graph, maxcardinality=True)
+        # get rid of non-digraph duplicates 
+        pairs = []
+        for tpl in matching.items():
+            if tuple(reversed(tpl)) not in pairs:
+                pairs.append(tpl)
 
     return pairs
 
