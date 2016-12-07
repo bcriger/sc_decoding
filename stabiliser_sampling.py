@@ -57,6 +57,19 @@ def prob_integral(weight_counts, p_lo, p_hi):
                     for w, c in enumerate(weight_counts)
                 ])/(p_hi - p_lo)
 
+def single_prob(weight_counts, p):
+    """
+    For debugging purposes, I'd like to have a function that evaluates
+    the coset probability at a single point in p-space, so that I can
+    see whether the integral is off. This is going to get normalised
+    anyway, so we can output probabilities that are off by an overall
+    factor of (1 - p) ** n.
+    """
+    return sum([ c * (p / (1. - p)) ** w
+                for w, c in enumerate(weight_counts)
+        ])
+    pass
+
 def coset_prob(stab_gens, log, coset_rep, p_lo, p_hi):
 
     return prob_integral(weight_dist(stab_gens, log, coset_rep), p_lo, p_hi)
@@ -64,13 +77,19 @@ def coset_prob(stab_gens, log, coset_rep, p_lo, p_hi):
 if __name__ == '__main__':
     test_layout = cm.SCLayoutClass.SCLayout(5)
     x_stabs = list(test_layout.stabilisers()['X'].values())
-    coset_rep = sp.Pauli({6, 15, 33, 42}, {})
     log = test_layout.logicals()[0]
     p_lo, p_hi = 0.005, 0.05
-    prob_dist = [coset_prob(x_stabs, log, sp.Pauli(), p_lo, p_hi),
-                    coset_prob(x_stabs, log, coset_rep, p_lo, p_hi)]
-    norm = sum(prob_dist)
-    prob_dist = [p/norm for p in prob_dist]
-
+    # prob_dist = [coset_prob(x_stabs, log, sp.Pauli(), p_lo, p_hi),
+    #                 coset_prob(x_stabs, log, coset_rep, p_lo, p_hi)]
+    c_rep_lst = [test_layout.map[q] for q in test_layout.datas]
+    for idx in c_rep_lst:
+        coset_rep = sp.Pauli({idx},{})
+        prob_dist = [
+                        single_prob(weight_dist(x_stabs, sp.Pauli(), coset_rep), 0.01),
+                        single_prob(weight_dist(x_stabs, log, coset_rep), 0.01)
+                    ]
+        norm = sum(prob_dist)
+        prob_dist = [p / norm for p in prob_dist]
+        print('actual error (also coset rep): {}. logical probabilities: {}'.format(coset_rep, prob_dist))
 
 #---------------------------------------------------------------------#
