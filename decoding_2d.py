@@ -7,7 +7,7 @@ from operator import mul
 from math import copysign
 import sparse_pauli as sp
 import progressbar as pb
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 from cffi import FFI
 
