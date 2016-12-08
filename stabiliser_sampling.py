@@ -10,6 +10,8 @@ import sparse_pauli as sp
 from functools import reduce
 from operator import mul, or_ as union
 from scipy.special import betainc
+import SCLayoutClass
+import decoding_2d as dc
 
 #from the itertools cookbook
 def powerset(iterable):
@@ -17,7 +19,7 @@ def powerset(iterable):
     s = list(iterable)
     return it.chain.from_iterable(it.combinations(s, r) for r in range(len(s)+1))
 
-def weight_dist(stab_gens, log, coset_rep):
+def weight_dist(stab_gens, identity, log, coset_rep):
     """
     If we iterate over an entire stabiliser group, we can calculate
     the weight of each Pauli of the form c * l * s for c a coset
@@ -34,12 +36,19 @@ def weight_dist(stab_gens, log, coset_rep):
     # First get nq
     nq = len(reduce(union, (s.support() for s in stab_gens)))
 
-    wt_counts = np.zeros((nq + 1,), dtype=np.int_)
+    wt_counts_I = np.zeros((nq + 1,), dtype=np.int_)
+    wt_counts_L = np.zeros((nq + 1,), dtype=np.int_)
+    
+    i = 0
     for subset in powerset(stab_gens):
+        i += 1
         s = reduce(mul, subset, sp.Pauli())
-        wt_counts[(s * log * coset_rep).weight()] += 1
+        wt_counts_I[(s * identity * coset_rep).weight()] += 1
+        wt_counts_L[(s * log * coset_rep).weight()] += 1
+        #if i % 1000 == 0:
+        #    print(i)
 
-    return wt_counts
+    return [wt_counts_I, wt_counts_L]
 
 def prob_integral(weight_counts, p_lo, p_hi):
     """
@@ -65,22 +74,26 @@ def single_prob(weight_counts, p):
     anyway, so we can output probabilities that are off by an overall
     factor of (1 - p) ** n.
     """
-    return sum([ c * (p / (1. - p)) ** w
-                for w, c in enumerate(weight_counts)
-        ])
-    pass
+
+    return [sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[0])]), 
+	        sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[1])])]
 
 def coset_prob(stab_gens, log, coset_rep, p_lo, p_hi):
 
     return prob_integral(weight_dist(stab_gens, log, coset_rep), p_lo, p_hi)
 
 if __name__ == '__main__':
-    test_layout = cm.SCLayoutClass.SCLayout(5)
+    distance = 5
+    x_anc_len = 12
+    #test_layout = cm.SCLayoutClass.SCLayout(5)
+    test_layout = SCLayoutClass.SCLayout(distance)
     x_stabs = list(test_layout.stabilisers()['X'].values())
     log = test_layout.logicals()[0]
-    p_lo, p_hi = 0.005, 0.05
+    #p_lo, p_hi = 0.005, 0.05
     # prob_dist = [coset_prob(x_stabs, log, sp.Pauli(), p_lo, p_hi),
     #                 coset_prob(x_stabs, log, coset_rep, p_lo, p_hi)]
+    
+    '''
     c_rep_lst = [test_layout.map[q] for q in test_layout.datas]
     for idx in c_rep_lst:
         coset_rep = sp.Pauli({idx},{})
@@ -91,5 +104,43 @@ if __name__ == '__main__':
         norm = sum(prob_dist)
         prob_dist = [p / norm for p in prob_dist]
         print('actual error (also coset rep): {}. logical probabilities: {}'.format(coset_rep, prob_dist))
+    '''
+    sim_test = dc.Sim2D(distance, 0.01) # probability is irrelevant since we provide directly the error
+    lst = []
+    z_ancs_keys = list(sim_test.layout.z_ancs())
+    cycles = 0
+    store_s = []
+    while len(lst) < 500:
+        cycles += 1
+        rnd_err = sim_test.random_error()
+        #print(rnd_err)
+        synds = sim_test.syndromes(rnd_err)
+        #print(synds[1])
+        dumb_x_corr, dumb_z_corr = sim_test.dumb_correction(synds)
+        coset_rep = dumb_x_corr     #sp.Pauli({5,13,22,26,33,42,46},{})
+        prob_dist = single_prob(weight_dist(x_stabs, sp.Pauli(), log, coset_rep), 0.01)
+        #single_prob(weight_dist(x_stabs, coset_rep), 0.01)       
+        norm = sum(prob_dist)
+        prob_dist = [p / norm for p in prob_dist]
+        
+        list_z = [0] * len(z_ancs_keys)
+        for k in synds[1]:
+            key = sim_test.layout.map.inv[k]
+            pos = z_ancs_keys.index(key)
+            list_z[pos] = 1
+        
+        s = ''
+        for i in range(x_anc_len):
+            s += str(list_z[i])
+		
+        if s not in store_s:
+            store_s.append(s)
+            lst.append([s, prob_dist])
 
+        if cycles % 20 == 0:
+            print(len(lst), cycles)
+            #print('store_s ', store_s)
+    
+    for i in range(len(lst)):
+        print(lst[i])
 #---------------------------------------------------------------------#
