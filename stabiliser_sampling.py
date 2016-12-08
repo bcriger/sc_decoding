@@ -17,7 +17,7 @@ def powerset(iterable):
     s = list(iterable)
     return it.chain.from_iterable(it.combinations(s, r) for r in range(len(s)+1))
 
-def weight_dist(stab_gens, log, coset_rep):
+def weight_dist(stab_gens, log, coset_rep, ltr='x'):
     """
     If we iterate over an entire stabiliser group, we can calculate
     the weight of each Pauli of the form c * l * s for c a coset
@@ -28,7 +28,9 @@ def weight_dist(stab_gens, log, coset_rep):
 
     The weight will range from 0 to nq, where nq is the number of
     qubits in the system, and there'll be many Paulis with each weight.
-    Therefore, we return an array full of counts.  
+    Therefore, we return an array full of counts.
+
+    For speed, I do the set sym_diffs directly   
     """
 
     # First get nq
@@ -74,7 +76,7 @@ def coset_prob(stab_gens, log, coset_rep, p_lo, p_hi):
 
     return prob_integral(weight_dist(stab_gens, log, coset_rep), p_lo, p_hi)
 
-if __name__ == '__main__':
+def main():
     test_layout = cm.SCLayoutClass.SCLayout(5)
     x_stabs = list(test_layout.stabilisers()['X'].values())
     log = test_layout.logicals()[0]
@@ -90,6 +92,9 @@ if __name__ == '__main__':
                     ]
         norm = sum(prob_dist)
         prob_dist = [p / norm for p in prob_dist]
-        print('actual error (also coset rep): {}. logical probabilities: {}'.format(coset_rep, prob_dist))
+        # print('actual error (also coset rep): {}. logical probabilities: {}'.format(coset_rep, prob_dist))
 
+
+if __name__ == '__main__':
+    main()
 #---------------------------------------------------------------------#
