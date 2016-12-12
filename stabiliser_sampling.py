@@ -12,6 +12,7 @@ from operator import mul, or_ as union, xor as sym_diff
 from scipy.special import betainc
 import circuit_metric.SCLayoutClass as SCLayoutClass
 import decoding_2d as dc
+import itertools as it
 
 #from the itertools cookbook
 def powerset(iterable):
@@ -95,15 +96,14 @@ def single_prob(weight_counts, p):
     """
 
     return [sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[0])]), 
-	        sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[1])])]
+            sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[1])])]
 
 def coset_prob(stab_gens, log, coset_rep, p_lo, p_hi):
     return prob_integral(weight_dist(stab_gens, log, coset_rep), p_lo, p_hi)
 
-if __name__ == '__main__':
+def unique_list():
     distance = 5
     x_anc_len = 12
-    #test_layout = cm.SCLayoutClass.SCLayout(5)
     test_layout = SCLayoutClass.SCLayout(distance)
     x_stabs = list(test_layout.stabilisers()['X'].values())
     log = test_layout.logicals()[0]
@@ -134,7 +134,7 @@ if __name__ == '__main__':
         s = ''
         for i in range(x_anc_len):
             s += str(list_z[i])
-		
+        
         if s not in store_s:
             store_s.append(s)
             lst.append([s, prob_dist])
@@ -145,5 +145,29 @@ if __name__ == '__main__':
     
     for i in range(len(lst)):
         print(lst[i])
+
+    #return lst
+
+def dist_5_check():
+    """
+    runs weight-1 and 2 errors for a dist-5 SC
+    """
+    test_layout = cm.SCLayoutClass.SCLayout(5)
+    x_stabs = list(test_layout.stabilisers()['X'].values())
+    ds = [test_layout.map[d] for d in test_layout.datas]
+    x_errs = [sp.Pauli({d}, set()) for d in ds]
+    x_errs += [sp.Pauli(pr, set()) for pr in it.combinations(ds,r=2)]
+    log = test_layout.logicals()[0]
+    for err in x_errs:
+        prob_dist = single_prob(weight_dist(x_stabs, err, log, err), 0.01)
+        norm = sum(prob_dist)
+        prob_dist = [p / norm for p in prob_dist]
+        if prob_dist[0] < 0.93:
+            print(err, prob_dist)
+
+if __name__ == '__main__':
+    # unique_list()
+    dist_5_check()
+
 
 #---------------------------------------------------------------------#
