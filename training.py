@@ -20,7 +20,7 @@ print(nodes)
 
 a = []
 b = []
-with open(ff+'_samples.txt', 'r') as f:
+with open(ff + '_samples.txt', 'r') as f:
     m = 0
     for line in f: # iterate over each line
         m += 1
@@ -45,8 +45,8 @@ y_data_cls = tf.argmax(y_data, dimension=1)
 
 W = []
 W.append(weight_variable([inputs,nodes[0]]))
-for i in range(len(nodes)-1):
-	W.append(weight_variable([nodes[i],nodes[i+1]]))
+# for i in range(len(nodes)-1):
+#   W.append(weight_variable([nodes[i],nodes[i+1]]))
 W.append(weight_variable([nodes[-1],outputs]))
 
 nodes_str = ''
@@ -58,7 +58,7 @@ bias.append(bias_variable([outputs]))
 
 h=[x_data]
 for i in range(len(nodes)):
-    h.append(tf.nn.sigmoid(tf.matmul(h[-1],W[i])+bias[i]))
+    h.append(tf.nn.sigmoid(tf.matmul(h[-1], W[i]) + bias[i]))
 y_nn = tf.nn.sigmoid(tf.matmul(h[-1], W[-1]) + bias[-1])
 
 #y_pred = tf.nn.softmax(y_nn)
@@ -72,7 +72,7 @@ train = tf.train.AdamOptimizer(learning_rate=1e-1).minimize(cost)
 correct_prediction = tf.equal(tf.round(y_pred_cls), tf.round(y_data_cls))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
-FLAGS_train = True	# True : for training (False : for prediction)
+FLAGS_train = True  # True : for training (False : for prediction)
 FLAGS_training_steps = 1000
 FLAGS_checkpoint_steps = 50 # save every x iterations
 NUM_CORES = 8  # Choose how many cores to use.
@@ -88,10 +88,11 @@ with tf.Session(config=sess_config) as sess:
     sess.run(tf.initialize_all_variables())
     saver = tf.train.Saver()
     first = 1
-    if FLAGS_train:	# training
+    if FLAGS_train: # training
         start_time = time.time()
         i = 1
         loss_prev = 0
+        
         if first == 1:
             err = 100.0
             old_err = 100.0
@@ -99,6 +100,7 @@ with tf.Session(config=sess_config) as sess:
             saver.restore(sess, ff+'_model'+nodes_str+'.ckpt')
             err = sess.run(cost, feed_dict=feed_dict_train)
             old_err = sess.run(cost, feed_dict=feed_dict_train)
+        
         while err > 0.001 and i <= FLAGS_training_steps:
             i += 1
             sess.run(train, feed_dict=feed_dict_train)
