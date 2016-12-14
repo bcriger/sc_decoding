@@ -166,8 +166,8 @@ def dist_5_check():
             print(err, prob_dist)
 
 if __name__ == '__main__':
-    # unique_list()
-    dist_5_check()
+    unique_list()
+    # dist_5_check()
 
 
 #---------------------------------------------------------------------#
