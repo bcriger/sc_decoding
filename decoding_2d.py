@@ -89,9 +89,7 @@ class Sim2D(object):
         g.add_nodes_from(syndrome)
         g.add_weighted_edges_from(
             (v1, v2, -pair_dist(crds[v1], crds[v2]))
-            for v1, v2 in
-            it.combinations(syndrome, 2)
-            )
+            for v1, v2 in it.combinations(syndrome, 2) )
 
         #boundary vertices, edges from boundary distance
         for s in syndrome:
@@ -182,6 +180,99 @@ class Sim2D(object):
 
         return product(pauli_lst)
 
+    def graphAndCorrection(self, syndrome, err):
+        """
+        Given a syndrome graph with edge weights, finds the
+        maximum-weight perfect matching and produces a
+        sparse_pauli.Pauli
+        """
+
+        crds = self.layout.map.inv
+
+        # calculate number of nodes and edges
+        node_num = 2*len(syndrome)
+        edge_num = len(syndrome)
+        for v1, v2 in it.combinations(syndrome, 2):
+            edge_num = edge_num+2;
+
+        # print( 'No of nodes : {0}, no of edges : {1}'.format(node_num,edge_num) )
+
+        # generate nodes based on syndromes
+        nodes = []
+        for s in syndrome:
+            n = str(s) + ', b'
+            nodes.append(s)
+            nodes.append(n)
+
+        # print("nodes : " , nodes)
+
+        # allocate edges and matching for c blossom
+        edges = self.ffi.new('Edge[%d]' % (edge_num) )
+        cmatching = self.ffi.new('int[%d]' % (2*node_num) )
+
+        # create node mapping
+        node2id = { val: index for index, val in enumerate(nodes) }
+        id2node = {v: k for k, v in node2id.iteritems()}
+
+        # generate edges
+        e = 0
+        for v1, v2 in it.combinations(syndrome, 2):
+            uid = int(node2id[v1])
+            vid = int(node2id[v2])
+            wt = pair_dist(crds[v1], crds[v2])
+            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
+            e += 1
+
+        close_pts = {}
+        for s in syndrome:
+            v1 = s
+            v2 = str(s) + ', b'
+            uid = int(node2id[v1])
+            vid = int(node2id[v2])
+            wt = self.bdy_info(crds[s])[0]
+            close_pt=self.bdy_info(crds[s])[1]
+            close_pts[(v1,v2)] = close_pt
+            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
+            e += 1
+
+        for u, v in it.combinations(syndrome, 2):
+            u1 = str(u)
+            v1 = str(v)
+            u2 = u1 + ', b'
+            v2 = v1 + ', b'
+            uid = int(node2id[u2])
+            vid = int(node2id[v2])
+            wt = 0
+            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
+            e += 1
+
+        # print( 'generated {0} edges.'.format(e) )
+
+        # invoke c blossom
+        retVal = self.blossom.Init()
+        retVal = self.blossom.Process(node_num, edge_num, edges)
+        # retVal = self.blossom.PrintMatching()
+        nMatching = self.blossom.GetMatching(cmatching)
+        retVal = self.blossom.Clean()
+
+        pairs = []
+        for i in range(0,nMatching,2):
+            u,v = id2node[cmatching[i]], id2node[cmatching[i+1]]
+            pairs.append( (u,v) )
+
+        pauli_lst = []
+        for u, v in pairs:
+            if isinstance(u, int) & isinstance(v, int):
+                pauli_lst.append(self.path_pauli(crds[u], crds[v], err))
+            elif isinstance(u, int) ^ isinstance(v, int):
+                bdy_pt = close_pts[(u,v)]
+                vert = u if isinstance(u, int) else v
+                pauli_lst.append(self.path_pauli(bdy_pt, crds[vert], err))
+            else:
+                pass #both boundary points, no correction
+
+        return product(pauli_lst)
+
     def logical_error(self, error, x_corr, z_corr):
         """
         Given an error and a correction, multiplies them and returns a
@@ -214,14 +305,22 @@ class Sim2D(object):
         trials = bar(range( int(n_trials) )) if progress else range( int(n_trials) )
 
         #self.layout.Print() # textual print of surface
-        #self.layout.Draw() # graphical print of surface
+        # self.layout.Draw() # graphical print of surface
 
         for trial in trials:
             err = self.random_error()
             x_synd, z_synd = self.syndromes(err)
-            x_graph, z_graph = self.graph(x_synd), self.graph(z_synd)
-            x_corr = self.correction(x_graph, 'Z')
-            z_corr = self.correction(z_graph, 'X')
+
+            if 0:
+                # with networkx interface (with/without blossom)
+                x_graph, z_graph = self.graph(x_synd), self.graph(z_synd)
+                x_corr = self.correction(x_graph, 'Z')
+                z_corr = self.correction(z_graph, 'X')
+            else:
+                # without networkx interface (only with blossom)
+                x_corr = self.graphAndCorrection(x_synd, 'Z')
+                z_corr = self.graphAndCorrection(z_synd, 'X')
+
             log = self.logical_error(err, x_corr, z_corr)
             self.errors[log] += 1
             if verbose:
@@ -236,7 +335,7 @@ class Sim2D(object):
                     ]))
 
         # graphical print of surface with syndromes
-        #self.layout.DrawSyndromes( x_graph.nodes(), z_graph.nodes() )
+        # self.layout.DrawSyndromes( x_graph.nodes(), z_graph.nodes() )
 
     def bdy_info(self, crd):
         """
