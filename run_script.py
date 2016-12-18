@@ -1,7 +1,8 @@
 import decoding_2d as dc2
 import decoding_3d as dc3
-import pickle as pkl
+import error_model as em
 import numpy as np
+import pickle as pkl
 
 def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz'):
     """
@@ -9,7 +10,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
     parameters. 
     """
     sim_type = sim_type.lower()
-    if sim_type not in ['iidxz', 'dep' 'pq', 'circ']:
+    if sim_type not in ['iidxz', 'dep', 'pq', 'circ']:
         raise ValueError("sim_type must be one of: ['iidxz', 'pq', 'circ']")
     
     errs = np.linspace(err_lo, err_hi, n_points)
@@ -20,7 +21,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
         for err in errs:
             
             if sim_type in ['iidxz', 'dep']:
-                current_sim = dc2.Sim2D(dist, err)
+                current_sim = dc2.Sim2D(dist, dist, err)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
             elif sim_type == 'circ':
