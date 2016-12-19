@@ -6,6 +6,7 @@ training data for the NN.
 """
 
 import numpy as np, itertools as it, circuit_metric as cm
+import itertools as it, circuit_metric as cm
 import sparse_pauli as sp
 from functools import reduce
 from operator import mul, or_ as union, xor as sym_diff
@@ -19,6 +20,7 @@ def powerset(iterable):
     "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
     s = list(iterable)
     return it.chain.from_iterable(it.combinations(s, r) for r in range(len(s)+1))
+
 
 def weight_dist(stab_gens, identity, log, coset_rep, ltr='x'):
     """
@@ -41,10 +43,8 @@ def weight_dist(stab_gens, identity, log, coset_rep, ltr='x'):
 
     wt_counts_I = np.zeros((nq + 1,), dtype=np.int_)
     wt_counts_L = np.zeros((nq + 1,), dtype=np.int_)
-    
     # i = 0
-    # TODO Strip single set and do sym_diff instead of mul
-
+    
     # for subset in powerset(stab_gens):
     #     i += 1
     #     s = reduce(mul, subset, sp.Pauli())
@@ -165,9 +165,21 @@ def dist_5_check():
         if prob_dist[0] < 0.93:
             print(err, prob_dist)
 
+def dist_7_single_sample():
+    test_layout = cm.SCLayoutClass.SCLayout(7)
+    x_stabs = list(test_layout.stabilisers()['X'].values())
+    ds = [test_layout.map[d] for d in test_layout.datas]
+    x_errs = [sp.Pauli({d}, set()) for d in ds]
+    x_errs += [sp.Pauli(pr, set()) for pr in it.combinations(ds,r=2)]
+    log = test_layout.logicals()[0]
+    prob_dist = single_prob(weight_dist(x_stabs, x_errs[52], log, x_errs[52]), 0.01)
+    norm = sum(prob_dist)
+    prob_dist = [p / norm for p in prob_dist]
+
 if __name__ == '__main__':
     # unique_list()
-    dist_5_check()
+    # dist_5_check()
+    dist_7_single_sample()
 
 
 #---------------------------------------------------------------------#

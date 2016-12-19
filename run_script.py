@@ -1,7 +1,8 @@
 import decoding_2d as dc2
 import decoding_3d as dc3
-import pickle as pkl
+import error_model as em
 import numpy as np
+import pickle as pkl
 
 def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz'):
     """
@@ -9,7 +10,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
     parameters. 
     """
     sim_type = sim_type.lower()
-    if sim_type not in ['iidxz', 'pq', 'circ']:
+    if sim_type not in ['iidxz', 'dep', 'pq', 'circ']:
         raise ValueError("sim_type must be one of: ['iidxz', 'pq', 'circ']")
     
     errs = np.linspace(err_lo, err_hi, n_points)
@@ -19,13 +20,17 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
         failures = []
         for err in errs:
             
-            if sim_type == 'iidxz':
-                current_sim = dc2.Sim2D(dist, err)
+            if sim_type in ['iidxz', 'dep']:
+                current_sim = dc2.Sim2D(dist, dist, err)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
             elif sim_type == 'circ':
                 current_sim = dc3.Sim3D(dist, dist, ('fowler', err))
             
+            if sim_type == 'dep':
+                current_sim.error_model = em.depolarize(err,
+                    [[current_sim.layout.map[_]] for _ in current_sim.layout.datas])
+
             current_sim.run(n_trials, progress=False)
             failures.append(current_sim.errors)
         output_dict.update({'failures ' + str(dist) : failures})
