@@ -11,7 +11,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
     """
     sim_type = sim_type.lower()
     if sim_type not in ['iidxz', 'dep', 'pq', 'circ']:
-        raise ValueError("sim_type must be one of: ['iidxz', 'pq', 'circ']")
+        raise ValueError("sim_type must be one of: ['iidxz', 'dep', 'pq', 'circ']")
     
     errs = np.linspace(err_lo, err_hi, n_points)
     output_dict = locals()

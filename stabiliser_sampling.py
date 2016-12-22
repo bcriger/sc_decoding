@@ -6,7 +6,7 @@ training data for the NN.
 """
 
 import numpy as np, itertools as it, circuit_metric as cm
-import itertools as it, circuit_metric as cm
+import cPickle as pkl #You have to change this for python 3.
 import sparse_pauli as sp
 from functools import reduce
 from operator import mul, or_ as union, xor as sym_diff
@@ -78,6 +78,8 @@ def prob_integral(weight_counts, p_lo, p_hi):
     We're going to sample p over a uniform distribution from p_lo to
     p_hi, so we calculate the expected value of this probability over
     the distribution.
+
+    DOES NOT WORK
     """
     n = len(weight_counts) - 1
     return sum([
@@ -93,10 +95,13 @@ def single_prob(weight_counts, p):
     see whether the integral is off. This is going to get normalised
     anyway, so we can output probabilities that are off by an overall
     factor of (1 - p) ** n.
-    """
 
-    return [sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[0])]), 
+    Note: they're not off by that number, they're off by p(synd).
+    """
+    p_vec = [sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[0])]), 
             sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[1])])]
+    norm = sum(p_vec)
+    return [p / norm for p in p_vec]
 
 def coset_prob(stab_gens, log, coset_rep, p_lo, p_hi):
     return prob_integral(weight_dist(stab_gens, log, coset_rep), p_lo, p_hi)
@@ -121,9 +126,6 @@ def unique_list():
         dumb_x_corr, dumb_z_corr = sim_test.dumb_correction(synds)
         coset_rep = dumb_x_corr     #sp.Pauli({5,13,22,26,33,42,46},{})
         prob_dist = single_prob(weight_dist(x_stabs, sp.Pauli(), log, coset_rep), 0.01)
-        #single_prob(weight_dist(x_stabs, coset_rep), 0.01)       
-        norm = sum(prob_dist)
-        prob_dist = [p / norm for p in prob_dist]
         
         list_z = [0] * len(z_ancs_keys)
         for k in synds[1]:
@@ -160,9 +162,7 @@ def dist_5_check():
     log = test_layout.logicals()[0]
     for err in x_errs:
         prob_dist = single_prob(weight_dist(x_stabs, err, log, err), 0.01)
-        norm = sum(prob_dist)
-        prob_dist = [p / norm for p in prob_dist]
-        if prob_dist[0] < 0.93:
+        if prob_dist[0] < 2.:
             print(err, prob_dist)
 
 def dist_7_single_sample():
@@ -173,13 +173,84 @@ def dist_7_single_sample():
     x_errs += [sp.Pauli(pr, set()) for pr in it.combinations(ds,r=2)]
     log = test_layout.logicals()[0]
     prob_dist = single_prob(weight_dist(x_stabs, x_errs[52], log, x_errs[52]), 0.01)
-    norm = sum(prob_dist)
-    prob_dist = [p / norm for p in prob_dist]
+
+def dist_5_tabulate():
+    """
+    I only intend to run this function once, it's going to pickle all
+    the weight_dist's for a distance-5 code correcting x errors.
+    """
+    anc_lst = [0, 1, 8, 10, 18, 20, 28, 30, 38, 40, 47, 48]
+    sim_5 = dc.Sim2D(5,5,0.01)
+    log_x, log_z = sim_5.layout.logicals()
+    x_stabs = list(sim_5.layout.stabilisers()['X'].values())
+    weight_dict = {}
+    blsm_cosets = {}
+    for subset in powerset(anc_lst):
+        coset_rep = sim_5.dumb_correction([[],list(subset)], origin=True)[0]
+        blsm_corr = sim_5.graphAndCorrection(subset, 'X')
+        key = synd_to_bits(subset, anc_lst)
+        val = weight_dist(x_stabs, sp.Pauli(), log_x, coset_rep)
+        weight_dict[key] = val
+        blsm_cosets[key] = (blsm_corr * coset_rep).com(log_z)
+    
+    with open('weight_counts_5.pkl', 'w') as phil:
+        pkl.dump(weight_dict, phil)
+    
+    with open('blsm_cosets_5.pkl', 'w') as phil:
+        pkl.dump(blsm_cosets, phil)
+
+def dist_5_log_error_rate(p_arr):
+    """
+    Using the weights we counted immediately above, I evaluate:
+    sum_{syndrome} p(syndrome) * p(fail | syndrome).
+
+    p(fail | syndrome) is the minimum of single_prob(wts, p), 
+    """
+    n = 25.
+    with open('weight_counts_5.pkl', 'r') as phil:
+        wc_dict = pkl.load(phil)
+    
+    with open('blsm_cosets_5.pkl', 'r') as phil:
+        bc_dict = pkl.load(phil)
+    
+    log_ps = np.zeros(p_arr.shape)
+    blsm_log_ps = np.zeros(p_arr.shape)
+    for idx, p in enumerate(p_arr):
+        for synd, weight_counts in wc_dict.items():
+            p_vec = [sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[0])]), 
+                    sum([ c * (p / (1. - p)) ** w  for w, c in enumerate(weight_counts[1])])]
+            log_ps[idx] += min(p_vec)
+            blsm_log_ps[idx] += p_vec[1 - bc_dict[synd]]
+        log_ps[idx] *= (1. - p) ** n
+        blsm_log_ps[idx] *= (1. - p) ** n
+    
+    return log_ps, blsm_log_ps
+
+
+#-------------------------convenience functions-----------------------#
+def synd_to_bits(synd, loc_list):
+    """
+    You put in a sparse int list (idxs where a check is violated) and 
+    a (sorted) list of the possible locations where a check could be
+    violated, and this function returns a string of ones and zeros.
+    """
+    return ''.join(['1' if _ in synd else '0' for _ in loc_list])
+
+def bits_to_synd(bits, loc_list):
+    """
+    You put in a sparse int list (idxs where a check is violated) and 
+    a (sorted) list of the possible locations where a check could be
+    violated, and this function returns a string of ones and zeros.
+    """
+    return ''.join(['1' if _ in synd else '0' for _ in loc_list])
 
 if __name__ == '__main__':
     # unique_list()
     # dist_5_check()
-    dist_7_single_sample()
+    # dist_5_tabulate()
+    p_arr = np.linspace(0.001,0.5,50)
+    test_vec = dist_5_log_error_rate(p_arr)
+    # dist_7_single_sample()
 
 
 #---------------------------------------------------------------------#

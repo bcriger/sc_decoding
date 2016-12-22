@@ -1,5 +1,6 @@
 import decoding_2d as dc2 
-import decoding_3d as dc3 
+import decoding_3d as dc3
+import itertools as it
 
 def circuit_syndrome_test():
     """
@@ -16,3 +17,28 @@ def circuit_syndrome_test():
         idl_x_synd, idl_z_synd = two_d_sim.syndromes(err)
         assert synd_hist['X'][idx] == set(idl_x_synd)
         assert synd_hist['Z'][idx] == set(idl_z_synd)
+
+def path_pauli_len_test():
+    """
+    compares lengths of path paulis to distances indicated by
+    pair_dist and bdy_info.
+    """
+    two_d_sim = dc2.Sim2D(11, 11, 0.0)
+    anc = two_d_sim.layout.ancillas
+    
+    x_pts = sum([list(anc[ki]) for ki in ['x_top', 'x_bot', 'x_sq']], [])
+    z_pts = sum([list(anc[ki]) for ki in ['z_left', 'z_right', 'z_sq']], [])
+    
+    z_pts += two_d_sim.layout.boundary_points('X')
+    x_pts += two_d_sim.layout.boundary_points('Z')
+
+    for lst, err in zip([x_pts, z_pts], ['Z', 'X']):
+        for pair in it.combinations(lst, 2):
+            dist = dc2.pair_dist(*pair)
+            p_len = two_d_sim.path_pauli(pair[0], pair[1], err).weight()
+            if dist != p_len:
+                print pair, err, dist, p_len
+            assert dist == p_len 
+
+
+#---------------------------------------------------------------------#

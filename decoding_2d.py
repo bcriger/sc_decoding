@@ -55,7 +55,7 @@ class Sim2D(object):
 
         return x_synd, z_synd
 
-    def dumb_correction(self, syndromes):
+    def dumb_correction(self, syndromes, origin=False):
         """
         Connects all detection events to the closest boundary of the
         appropriate type.
@@ -64,14 +64,26 @@ class Sim2D(object):
         indicating a Z error.
         Note that these syndromes are supported on the X ancillas of
         the layout and vice versa.
+
+        There's an optional argument, origin, that will just move
+        all observed syndromes to the same corner of the lattice, near
+        the origin.
         """
         corr_dict = {'Z': sp.Pauli(), 'X': sp.Pauli()}
-        for err, synd in zip ('ZX', syndromes):
-            crds = [self.layout.map.inv[_] for _ in synd]
-            corr_dict[err] *= product([
-                self.path_pauli(_, self.bdy_info(_)[1], err)
-                for _ in crds
-                ])
+        if origin:
+            for err, synd, pt in zip ('ZX', syndromes, [(0, 0), (2, 0)]):
+                crds = [self.layout.map.inv[_] for _ in synd]
+                corr_dict[err] *= product([
+                    self.path_pauli(_, pt, err)
+                    for _ in crds
+                    ])
+        else:
+            for err, synd in zip ('ZX', syndromes):
+                crds = [self.layout.map.inv[_] for _ in synd]
+                corr_dict[err] *= product([
+                    self.path_pauli(_, self.bdy_info(_)[1], err)
+                    for _ in crds
+                    ])
 
         return corr_dict['X'], corr_dict['Z']
 
