@@ -49,6 +49,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
             if sim_type == 'dep':
                 current_sim.error_model = em.depolarize(err,
                     [[current_sim.layout.map[_]] for _ in current_sim.layout.datas])
+                dist_func = fancy_dist(dist, 0.66666667 * err)
 
             current_sim.run(n_trials, progress=False, dist_func=dist_func)
             failures.append(current_sim.errors)
