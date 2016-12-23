@@ -87,27 +87,30 @@ class Sim2D(object):
 
         return corr_dict['X'], corr_dict['Z']
 
-    def graph(self, syndrome, shadow=False):
+    def graph(self, syndrome, shadow=False, dist_func=None):
         """
         returns a NetworkX graph from a given syndrome, on which you
         can find the MAXIMUM weight perfect matching (This is what
         NetworkX does). We use negative edge weights to make this
         happen.
         """
+        dist_func = dist_func if dist_func else pair_dist
+
         crds = self.layout.map.inv
         g = nx.Graph()
 
         #vertices directly from syndrome
         g.add_nodes_from(syndrome)
         g.add_weighted_edges_from(
-            (v1, v2, -pair_dist(crds[v1], crds[v2]))
+            (v1, v2, -dist_func(crds[v1], crds[v2]))
             for v1, v2 in it.combinations(syndrome, 2) )
 
         #boundary vertices, edges from boundary distance
         for s in syndrome:
-            g.add_edge(s, (s, 'b'),
-                        weight=-self.bdy_info(crds[s])[0],
-                        close_pt=self.bdy_info(crds[s])[1])
+            b_info = self.bdy_info(crds[s])
+            closest_pt = b_info[1]
+            dist = dist_func(crds[s], closest_pt)
+            g.add_edge(s, (s, 'b'), weight=-dist, close_pt=closest_pt)
 
         #weight-0 edges between boundary vertices
         g.add_weighted_edges_from(
@@ -192,20 +195,25 @@ class Sim2D(object):
 
         return product(pauli_lst)
 
-    def graphAndCorrection(self, syndrome, err):
+    def graphAndCorrection(self, syndrome, err, dist_func=None):
         """
         Given a syndrome graph with edge weights, finds the
         maximum-weight perfect matching and produces a
-        sparse_pauli.Pauli
+        sparse_pauli.Pauli.
+
+        Optional argument dist_func provides a way to customise
+        distance calculations, you can put in a function that takes a
+        pair of crds as arguments and spits out a (preferably small)
+        positive number.
         """
 
         crds = self.layout.map.inv
 
         # calculate number of nodes and edges
-        node_num = 2*len(syndrome)
+        node_num = 2 * len(syndrome)
         edge_num = len(syndrome)
         for v1, v2 in it.combinations(syndrome, 2):
-            edge_num = edge_num+2;
+            edge_num = edge_num + 2; #TODO replace loop with n*(n-1)
 
         # print( 'No of nodes : {0}, no of edges : {1}'.format(node_num,edge_num) )
 
@@ -220,7 +228,7 @@ class Sim2D(object):
 
         # allocate edges and matching for c blossom
         edges = self.ffi.new('Edge[%d]' % (edge_num) )
-        cmatching = self.ffi.new('int[%d]' % (2*node_num) )
+        cmatching = self.ffi.new('int[%d]' % (2 * node_num) )
 
         # create node mapping
         node2id = { val: index for index, val in enumerate(nodes) }
@@ -231,7 +239,12 @@ class Sim2D(object):
         for v1, v2 in it.combinations(syndrome, 2):
             uid = int(node2id[v1])
             vid = int(node2id[v2])
-            wt = pair_dist(crds[v1], crds[v2])
+            
+            if dist_func:
+                wt = dist_func(crds[v1], crds[v2])
+            else:
+                wt = pair_dist(crds[v1], crds[v2])
+            
             edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
             e += 1
 
@@ -241,8 +254,13 @@ class Sim2D(object):
             v2 = str(s) + ', b'
             uid = int(node2id[v1])
             vid = int(node2id[v2])
-            wt = self.bdy_info(crds[s])[0]
-            close_pt=self.bdy_info(crds[s])[1]
+            bd_info = self.bdy_info(crds[s])
+            close_pt = bd_info[1]
+            if dist_func:
+                wt = dist_func(crds[s], close_pt)
+            else:
+                wt = self.bdy_info(crds[s])[0]
+            
             close_pts[(v1,v2)] = close_pt
             edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
             e += 1
@@ -268,7 +286,7 @@ class Sim2D(object):
         retVal = self.blossom.Clean()
 
         pairs = []
-        for i in range(0,nMatching,2):
+        for i in range(0, nMatching, 2):
             u,v = id2node[cmatching[i]], id2node[cmatching[i+1]]
             pairs.append( (u,v) )
 
@@ -303,7 +321,7 @@ class Sim2D(object):
 
         return anticom_dict[ ( x_com, z_com ) ]
 
-    def run(self, n_trials, verbose=False, progress=True):
+    def run(self, n_trials, verbose=False, progress=True, dist_func=None):
         """
         Repeats the following cycle `n_trials` times:
          + Generate a random error
@@ -323,15 +341,16 @@ class Sim2D(object):
             err = self.random_error()
             x_synd, z_synd = self.syndromes(err)
 
-            if 0:
+            if self.useBlossom:
+                # without networkx interface (only with blossom)
+                x_corr = self.graphAndCorrection(x_synd, 'Z', dist_func=dist_func)
+                z_corr = self.graphAndCorrection(z_synd, 'X', dist_func=dist_func)
+            else:
                 # with networkx interface (with/without blossom)
-                x_graph, z_graph = self.graph(x_synd), self.graph(z_synd)
+                x_graph = self.graph(x_synd, dist_func=dist_func)
+                z_graph = self.graph(z_synd, dist_func=dist_func)
                 x_corr = self.correction(x_graph, 'Z')
                 z_corr = self.correction(z_graph, 'X')
-            else:
-                # without networkx interface (only with blossom)
-                x_corr = self.graphAndCorrection(x_synd, 'Z')
-                z_corr = self.graphAndCorrection(z_synd, 'X')
 
             log = self.logical_error(err, x_corr, z_corr)
             self.errors[log] += 1
