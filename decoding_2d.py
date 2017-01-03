@@ -445,14 +445,10 @@ def diag_pth(crd_0, crd_1):
 
 def diag_intersection(crd_0, crd_1, ancs=None):
     """
-    Uses a little linear algebra to determine where diagonal paths that
-    step outward from ancilla qubits intersect.
-    This allows us to reduce the problems of length-finding and
-    path-making to a pair of 1D problems.
+    Returns an appropriate cornering point for a path on the lattice by
+    testing potential corners to determine if they're on the lattice.
     """
-    a, b, c, d = crd_0[0], crd_0[1], crd_1[0], crd_1[1]
-    vs = [( int(( d + c - b + a ) / 2), int(( d + c + b - a ) / 2 )),
-        ( int(( d - c - b - a ) / -2), int(( -d + c - b - a ) / -2 ))]
+    vs = corners(crd_0, crd_1)
 
     if ancs:
         if vs[0] in sum(ancs, ()):
@@ -463,5 +459,17 @@ def diag_intersection(crd_0, crd_1, ancs=None):
         mid_v = vs[0]
 
     return mid_v
+
+def corners(crd_0, crd_1):
+    """
+    Uses a little linear algebra to determine where diagonal paths that
+    step outward from ancilla qubits intersect.
+    This allows us to reduce the problems of length-finding and
+    path-making to a pair of 1D problems.
+    """
+    a, b, c, d = crd_0[0], crd_0[1], crd_1[0], crd_1[1]
+    vs = [( int(( d + c - b + a ) / 2), int(( d + c + b - a ) / 2 )),
+        ( int(( d - c - b - a ) / -2), int(( -d + c - b - a ) / -2 ))]
+    return vs
 
 #---------------------------------------------------------------------#

@@ -5,22 +5,25 @@ This is a subroutine for RG decoding, and it can be used to generate
 training data for the NN.  
 """
 
-import numpy as np, itertools as it, circuit_metric as cm
-import cPickle as pkl #You have to change this for python 3.
-import sparse_pauli as sp
-from functools import reduce
-from operator import mul, or_ as union, xor as sym_diff
-from scipy.special import betainc
+import circuit_metric as cm
 import circuit_metric.SCLayoutClass as SCLayoutClass
+import cPickle as pkl #You have to change this for python 3.
 import decoding_2d as dc
+import error_model as em
+from functools import reduce
 import itertools as it
+import numpy as np
+from operator import mul, or_ as union, xor as sym_diff
+from run_script import fancy_dist
+from scipy.special import betainc
+import sparse_pauli as sp
+
 
 #from the itertools cookbook
 def powerset(iterable):
     "powerset([1,2,3]) --> () (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"
     s = list(iterable)
     return it.chain.from_iterable(it.combinations(s, r) for r in range(len(s)+1))
-
 
 def weight_dist(stab_gens, identity, log, coset_rep, ltr='x'):
     """
@@ -70,6 +73,33 @@ def weight_dist(stab_gens, identity, log, coset_rep, ltr='x'):
 
     return [wt_counts_I, wt_counts_L]
 
+def full_weight_dist(stab_gens, log_x, log_z, coset_rep):
+    """
+    I revert to full Pauli calculations in order to look at
+    depolarizing errors.
+    """
+
+    # First get nq
+    nq = len(reduce(union, (s.support() for s in stab_gens)))
+    wt_counts = {
+            'I': np.zeros((nq + 1,), dtype=np.int_),
+            'X': np.zeros((nq + 1,), dtype=np.int_),
+            'Y': np.zeros((nq + 1,), dtype=np.int_),
+            'Z': np.zeros((nq + 1,), dtype=np.int_)
+            }
+    coset_rep_X = coset_rep * log_x
+    coset_rep_Y = coset_rep * log_x * log_z
+    coset_rep_Z = coset_rep * log_z
+    
+    for subset in powerset(stab_gens):
+        s = reduce(mul, subset, sp.Pauli())
+        wt_counts['I'][(s * coset_rep).weight()] += 1
+        wt_counts['X'][(s * coset_rep_X).weight()] += 1
+        wt_counts['Y'][(s * coset_rep_Y).weight()] += 1
+        wt_counts['Z'][(s * coset_rep_Z).weight()] += 1
+
+    return wt_counts
+
 def prob_integral(weight_counts, p_lo, p_hi):
     """
     The probability of a logical out given a syndrome coset rep in is
@@ -88,6 +118,8 @@ def prob_integral(weight_counts, p_lo, p_hi):
                     for w, c in enumerate(weight_counts)
                 ])/(p_hi - p_lo)
 
+cnt2p = lambda cnt, p: sum([ c * (p / (1. - p)) ** w for w, c in enumerate(cnt)])
+
 def single_prob(weight_counts, p):
     """
     For debugging purposes, I'd like to have a function that evaluates
@@ -98,10 +130,21 @@ def single_prob(weight_counts, p):
 
     Note: they're not off by that number, they're off by p(synd).
     """
-    p_vec = [sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[0])]), 
-            sum([ c * (p / (1. - p)) ** w for w, c in enumerate(weight_counts[1])])]
+    p_vec = map(cnt2p, weight_counts)
     norm = sum(p_vec)
     return [p / norm for p in p_vec]
+
+def dep_prob(weight_count_dict, dep_p):
+    """
+    Does the same thing as single_prob, except that now I'm trying to
+    correct depolarization.
+    I return four probabilities [p_I, p_X, p_Y, p_Z].
+    """
+    p_lst = []
+    for ki in 'IXYZ':
+        p_lst.append(cnt2p(weight_count_dict[ki], dep_p / 3.))
+    norm = sum(p_lst)
+    return [p / norm for p in p_lst]
 
 def coset_prob(stab_gens, log, coset_rep, p_lo, p_hi):
     return prob_integral(weight_dist(stab_gens, log, coset_rep), p_lo, p_hi)
@@ -162,7 +205,7 @@ def dist_5_check():
     log = test_layout.logicals()[0]
     for err in x_errs:
         prob_dist = single_prob(weight_dist(x_stabs, err, log, err), 0.01)
-        if prob_dist[0] < 2.:
+        if prob_dist[0] < 2.: #dummy
             print(err, prob_dist)
 
 def dist_7_single_sample():
@@ -180,13 +223,13 @@ def dist_5_tabulate():
     the weight_dist's for a distance-5 code correcting x errors.
     """
     anc_lst = [0, 1, 8, 10, 18, 20, 28, 30, 38, 40, 47, 48]
-    sim_5 = dc.Sim2D(5,5,0.01)
+    sim_5 = dc.Sim2D(5, 5, 0.01)
     log_x, log_z = sim_5.layout.logicals()
     x_stabs = list(sim_5.layout.stabilisers()['X'].values())
     weight_dict = {}
     blsm_cosets = {}
     for subset in powerset(anc_lst):
-        coset_rep = sim_5.dumb_correction([[],list(subset)], origin=True)[0]
+        coset_rep = sim_5.dumb_correction([[], list(subset)], origin=True)[0]
         blsm_corr = sim_5.graphAndCorrection(subset, 'X')
         key = synd_to_bits(subset, anc_lst)
         val = weight_dist(x_stabs, sp.Pauli(), log_x, coset_rep)
@@ -198,6 +241,70 @@ def dist_5_tabulate():
     
     with open('blsm_cosets_5.pkl', 'w') as phil:
         pkl.dump(blsm_cosets, phil)
+
+def dist_5_fancy_tabulate():
+    """
+    I want to know if Tom's weights produce disagreement for
+    independent X/Z decoding @ distance 5.
+
+    Checking at p = 0.01, there are no different syndromes when using
+    fancy/non-fancy weights
+    """
+    anc_lst = [0, 1, 8, 10, 18, 20, 28, 30, 38, 40, 47, 48]
+    sim_5 = dc.Sim2D(5, 5, 0.01, useBlossom=False)
+    log_x, log_z = sim_5.layout.logicals()
+    x_stabs = list(sim_5.layout.stabilisers()['X'].values())
+    weight_dict = {}
+    blsm_cosets = {}
+    d_func = fancy_dist(5, 0.01) #test for other values of p?
+    for subset in powerset(anc_lst):
+        synd = [[],list(subset)]
+        coset_rep = sim_5.dumb_correction(synd, origin=True)[0]
+        g = sim_5.graph(subset, dist_func=d_func)
+        blsm_corr = sim_5.correction(g, 'X')
+        key = synd_to_bits(subset, anc_lst)
+        blsm_cosets[key] = (blsm_corr * coset_rep).com(log_z)
+    return blsm_cosets
+
+
+def dist_3_corr_tabulate():
+    """
+    Mostly a copypasta of dist_5_tabulate, but I'm trying for a
+    depolarizing error model.
+    """
+    sim_3 = dc.Sim2D(3, 3, 0.00)
+    sim_3.error_model = em.depolarize(0.03,
+                    [[sim_3.layout.map[_]] for _ in sim_3.layout.datas])
+    x_anc_lst = sorted([sim_3.layout.map[crd] for crd in sim_3.layout.x_ancs()])
+    z_anc_lst = sorted([sim_3.layout.map[crd] for crd in sim_3.layout.z_ancs()])
+    anc_lst = sorted(x_anc_lst + z_anc_lst)
+    log_x, log_z = sim_3.layout.logicals()
+    stab_gens = sum(map(lambda x: x.values(),
+                        sim_3.layout.stabilisers().values()), [])
+
+    synds = it.product(powerset(x_anc_lst), powerset(z_anc_lst))
+    output_dict = {}
+    blsm_cosets = {}
+    for x_synd, z_synd in synds:
+        coset_rep = reduce(mul, sim_3.dumb_correction([x_synd, z_synd], origin=True))
+        key = synd_to_bits(x_synd + z_synd, anc_lst)
+        val = full_weight_dist(stab_gens, log_x, log_z, coset_rep)
+        x_corr = sim_3.graphAndCorrection(x_synd, 'Z')
+        z_corr = sim_3.graphAndCorrection(z_synd, 'X')
+        loop = x_corr * z_corr * coset_rep 
+        if loop.com(log_z):
+            blsm_cosets[key] = 'Y' if loop.com(log_x) else 'X'
+        else:
+            blsm_cosets[key] = 'Z' if loop.com(log_x) else 'I'
+        output_dict[key] = val
+    
+    with open('corr_wts_3.pkl', 'w') as phil:
+        pkl.dump(output_dict, phil)
+    
+    with open('corr_cosets_3.pkl', 'w') as phil:
+        pkl.dump(blsm_cosets, phil)
+    
+    pass
 
 def dist_5_log_error_rate(p_arr):
     """
@@ -226,6 +333,12 @@ def dist_5_log_error_rate(p_arr):
     
     return log_ps, blsm_log_ps
 
+def dist_3_corr_log_error_rate(p_arr):
+    """
+    For a depolarizing error model, I evaluate the different
+    probabilities of logical error (X, Y, or Z)
+    """
+
 
 #-------------------------convenience functions-----------------------#
 def synd_to_bits(synd, loc_list):
@@ -242,15 +355,18 @@ def bits_to_synd(bits, loc_list):
     a (sorted) list of the possible locations where a check could be
     violated, and this function returns a string of ones and zeros.
     """
-    return ''.join(['1' if _ in synd else '0' for _ in loc_list])
+    return [l for l, b in zip(loc_list, bits) if b == 1]
+
+#---------------------------------------------------------------------#
 
 if __name__ == '__main__':
     # unique_list()
     # dist_5_check()
     # dist_5_tabulate()
-    p_arr = np.linspace(0.001,0.5,50)
-    test_vec = dist_5_log_error_rate(p_arr)
+    # p_arr = np.linspace(0.001,0.5,50)
+    # test_vec = dist_5_log_error_rate(p_arr)
     # dist_7_single_sample()
+    pass
 
 
 #---------------------------------------------------------------------#
