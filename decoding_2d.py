@@ -195,7 +195,8 @@ class Sim2D(object):
 
         return product(pauli_lst)
 
-    def graphAndCorrection(self, syndrome, err, dist_func=None):
+    def graphAndCorrection(self, syndrome, err, dist_func=None,
+                            return_matching=False):
         """
         Given a syndrome graph with edge weights, finds the
         maximum-weight perfect matching and produces a
@@ -205,6 +206,9 @@ class Sim2D(object):
         distance calculations, you can put in a function that takes a
         pair of crds as arguments and spits out a (preferably small)
         positive number.
+
+        Optional argument return_matching allows us to spit out a list
+        of pairs of co-ordinates which can then be fed to re-weighting.
         """
 
         crds = self.layout.map.inv
@@ -291,17 +295,20 @@ class Sim2D(object):
             pairs.append( (u,v) )
 
         pauli_lst = []
+        matchups = []
         for u, v in pairs:
             if isinstance(u, int) & isinstance(v, int):
                 pauli_lst.append(self.path_pauli(crds[u], crds[v], err))
+                matchups.append((crds[u], crds[v]))
             elif isinstance(u, int) ^ isinstance(v, int):
                 bdy_pt = close_pts[(u,v)]
                 vert = u if isinstance(u, int) else v
                 pauli_lst.append(self.path_pauli(bdy_pt, crds[vert], err))
+                matchups.append((bdy_pt, crds[vert]))
             else:
                 pass #both boundary points, no correction
 
-        return product(pauli_lst)
+        return matchups if return_matching else product(pauli_lst)
 
     def logical_error(self, error, x_corr, z_corr):
         """
@@ -374,7 +381,7 @@ class Sim2D(object):
         one of the acceptable boundary vertices, depending on
         syndrome type (X or Z).
         """
-        min_dist = 4 * self.dx #any impossibly large value will do
+        min_dist = 4 * max(self.dx, self.dy) #any impossibly large value will do
         err_type = 'Z' if crd in self.layout.x_ancs() else 'X'
         for pt in self.layout.boundary_points(err_type):
             new_dist = pair_dist(crd, pt)
@@ -394,6 +401,7 @@ class Sim2D(object):
         two diagonal paths on the rotated lattice that go to and from
         this corner.
         """
+        err_type = err_type.upper()
 
         mid_v = diag_intersection(crd_0, crd_1, self.layout.ancillas.values())
 
