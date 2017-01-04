@@ -59,10 +59,21 @@ def bbox_p_v_mat(crd_0, crd_1, vertices):
     #I want the dist from the start to the corners
     deltas = [crnr - crd_0 for crnr in crnrs]
     
-    n_0 = abs(deltas[0][0]) / 2 #ancilla-ancilla steps
+    # We're set up to handle paths with corners. What about straight
+    # lines?
+    if any(np.all(elem == np.array([0,0])) for elem in deltas):
+        delta = [_ for _ in deltas if not(np.all(_ == np.array([0,0])))][0]
+        n = abs(delta[0]) / 2 # ancilla-ancilla steps
+        step = delta / n 
+        for idx in range(n):
+            p_mat[crd_0 + idx * step, crd_0 + (idx + 1) * step] = 1.
+
+        return p_mat
+
+    n_0 = abs(deltas[0][0]) / 2 # ancilla-ancilla steps
     step_0 = deltas[0] / n_0
 
-    n_1 = abs(deltas[1][0]) / 2 #ancilla-ancilla steps
+    n_1 = abs(deltas[1][0]) / 2 # ancilla-ancilla steps
     step_1 = deltas[1] / n_1
 
     ancs_in_bbox = []
@@ -103,8 +114,22 @@ def matching_p_mat(match_lst, vertices, mdl, new_err):
         p_mat += bbox_p_v_mat(pair[0], pair[1], vertices)
 
     for r, c in it.product(range(len(vertices)), repeat=2):
-        p_mat[r, c] = p_v_prime(p_mat, mdl, new_err)
+        p_mat[r, c] = p_v_prime(p_mat[r, c], mdl, new_err)
 
     return p_mat
+
+def nn_edge_switch(crds):
+    """
+    In order to make a metric, I have to express a pair of adjacent X
+    ancillas as a pair of adjacent Z ancillas which are next to the
+    same qubit.
+    This can be accomplished by transposing the co-ordinates. 
+    For example, in the distance 5 layout, the adjacent Z ancillas
+    at (2, 6) and (4, 8) are next to the same qubit as the X ancillas
+    at (2, 8) and (4, 6). 
+    This does not hold for long paths, so we have to perform this
+    operation before doing the inversion trick. 
+    """
+    return ((crds[0][0], crds[1][1]), (crds[1][0], crds[0][1]))
 
 #---------------------------------------------------------------------#

@@ -1,7 +1,9 @@
+import circuit_metric as cm
 import decoding_2d as dc2
 import decoding_3d as dc3
 import error_model as em
-import circuit_metric as cm
+import itertools as it
+import matched_weights as mw
 import numpy as np
 import pickle as pkl
 from scipy.linalg import block_diag
@@ -59,6 +61,73 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
         pkl.dump(output_dict, phil)
 
     pass
+
+def run_corr_dep(err_lo, err_hi, n_points, dists, n_trials, flnm):
+    """
+    special purpose loop to run the ad hoc correlated error decoder.
+    """
+
+def corr_decode_test(dist, err, n_trials):
+    """
+    Let's knock together a re-weighting decoder for depolarizing
+    errors.
+    I'm going to do a round of independent matchings (X and Z), then a
+    round of re-weighted matchings (X and Z). 
+    """
+    sim = dc2.sim2D(dist, dist, err)
+    sim.error_model = em.depolarize(err,
+                    [[sim.layout.map[_]] for _ in sim.layout.datas])
+    x_vrts = sim.layout.x_ancs() + sim.layout.boundary_points('z')
+    z_vrts = sim.layout.z_ancs() + sim.layout.boundary_points('x')
+    vrts = x_vrts + z_vrts
+    mdl = sim.error_model.p_arr
+    for _ in range(n_trials):
+        err = sim.random_error()
+        x_synd, z_synd = sim.syndromes(err)
+        sim.useBlossom = True
+        x_matches = sim.graphAndCorrection(x_synd, 'z', return_matching=True)
+        z_matches = sim.graphAndCorrection(z_synd, 'x', return_matching=True)
+        x_mat = matching_p_mat(x_matches, x_vrts, mdl, 'x')
+        z_mat = matching_p_mat(z_matches, z_vrts, mdl, 'z')
+        temp_mat = np.zeros_like(z_mat)
+
+        #put x_mat in temp_mat
+        for r, c in it.product(range(len(x_vrts)), repeat=2):
+            crds = (x_vrts[r], x_vrts[c])
+            crds_p = mw.nn_edge_switch(crds)
+            r_p, c_p = z_vrts.index(crds_p[0]), z_vrts.index(crds_p[1])
+            temp_mat[r_p, c_p] = x_mat[r, c]
+        
+        #put z_mat in x_mat
+        for r, c in it.product(range(len(x_vrts)), repeat=2):
+            crds = (z_vrts[r], z_vrts[c])
+            crds_p = mw.nn_edge_switch(crds)
+            x_vrts.index(crds_p[0]), x_vrts.index(crds_p[1])
+            x_mat[r_p, c_p] = z_mat[r, c]
+
+        #put temp_mat in x_mat
+        for r, c in it.product(range(len(x_vrts)), repeat=2):
+            crds = (z_vrts[r], z_vrts[c])
+            crds_p = mw.nn_edge_switch(crds)
+            r_p, c_p = x_vrts.index(crds_p[0]), x_vrts.index(crds_p[1])
+            x_mat[r_p, c_p] = temp_mat[r, c]
+        
+        x_mat = cm.fancy_weights(x_mat)
+        z_mat = cm.fancy_weights(z_mat)
+        big_mat = np.block_diag(x_mat, z_mat)
+        def dist_func(crd0, crd1):
+            return big_mat[crds.index(crd0), crds.index(crd1)]
+
+        sim.useBlossom = False
+        x_graph = sim.graph(x_synd, dist_func=dist_func)
+        z_graph = sim.graph(z_synd, dist_func=dist_func)
+        x_corr = sim.correction(x_graph, 'Z')
+        z_corr = sim.correction(z_graph, 'X')
+
+        log = sim.logical_error(err, x_corr, z_corr)
+        sim.errors[log] += 1
+    
+    return sim.errors
 
 if __name__ == '__main__':
     from sys import argv
