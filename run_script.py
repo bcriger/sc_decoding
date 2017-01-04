@@ -8,6 +8,8 @@ import numpy as np
 import pickle as pkl
 from scipy.linalg import block_diag
 
+SHIFTS = [(2, 2), (2, -2), (-2, 2), (-2, -2)]
+
 def fancy_dist(d, p):
     """
     Turns the nice list/matrix description output by 
@@ -66,6 +68,18 @@ def run_corr_dep(err_lo, err_hi, n_points, dists, n_trials, flnm):
     """
     special purpose loop to run the ad hoc correlated error decoder.
     """
+    errs = np.linspace(err_lo, err_hi, n_points)
+    output_dict = locals()
+    for dist in dists:
+        failures = []
+        for err in errs:
+            failures.append(corr_decode_test(dist, err, n_trials))
+        output_dict.update({'failures ' + str(dist) : failures})
+
+    with open(flnm, 'wb') as phil:
+        pkl.dump(output_dict, phil)
+
+    pass
 
 def corr_decode_test(dist, err, n_trials):
     """
@@ -74,7 +88,7 @@ def corr_decode_test(dist, err, n_trials):
     I'm going to do a round of independent matchings (X and Z), then a
     round of re-weighted matchings (X and Z). 
     """
-    sim = dc2.sim2D(dist, dist, err)
+    sim = dc2.Sim2D(dist, dist, err)
     sim.error_model = em.depolarize(err,
                     [[sim.layout.map[_]] for _ in sim.layout.datas])
     x_vrts = sim.layout.x_ancs() + sim.layout.boundary_points('z')
@@ -87,36 +101,36 @@ def corr_decode_test(dist, err, n_trials):
         sim.useBlossom = True
         x_matches = sim.graphAndCorrection(x_synd, 'z', return_matching=True)
         z_matches = sim.graphAndCorrection(z_synd, 'x', return_matching=True)
-        x_mat = matching_p_mat(x_matches, x_vrts, mdl, 'x')
-        z_mat = matching_p_mat(z_matches, z_vrts, mdl, 'z')
+        x_mat = mw.matching_p_mat(x_matches, x_vrts, mdl, 'x')
+        z_mat = mw.matching_p_mat(z_matches, z_vrts, mdl, 'z')
         temp_mat = np.zeros_like(z_mat)
 
         #put x_mat in temp_mat
         for r, c in it.product(range(len(x_vrts)), repeat=2):
             crds = (x_vrts[r], x_vrts[c])
-            crds_p = mw.nn_edge_switch(crds)
-            r_p, c_p = z_vrts.index(crds_p[0]), z_vrts.index(crds_p[1])
-            temp_mat[r_p, c_p] = x_mat[r, c]
+            diff = (crds[0][0] - crds[1][0], crds[0][1] - crds[1][1])
+            if diff in SHIFTS:
+                crds_p = mw.nn_edge_switch(crds)
+                r_p, c_p = z_vrts.index(crds_p[0]), z_vrts.index(crds_p[1])
+                temp_mat[r_p, c_p] = x_mat[r, c]
         
         #put z_mat in x_mat
         for r, c in it.product(range(len(x_vrts)), repeat=2):
             crds = (z_vrts[r], z_vrts[c])
-            crds_p = mw.nn_edge_switch(crds)
-            x_vrts.index(crds_p[0]), x_vrts.index(crds_p[1])
-            x_mat[r_p, c_p] = z_mat[r, c]
+            diff = (crds[0][0] - crds[1][0], crds[0][1] - crds[1][1])
+            if diff in SHIFTS:
+                crds_p = mw.nn_edge_switch(crds)
+                x_vrts.index(crds_p[0]), x_vrts.index(crds_p[1])
+                x_mat[r_p, c_p] = z_mat[r, c]
 
         #put temp_mat in x_mat
-        for r, c in it.product(range(len(x_vrts)), repeat=2):
-            crds = (z_vrts[r], z_vrts[c])
-            crds_p = mw.nn_edge_switch(crds)
-            r_p, c_p = x_vrts.index(crds_p[0]), x_vrts.index(crds_p[1])
-            x_mat[r_p, c_p] = temp_mat[r, c]
+        x_mat = temp_mat
         
         x_mat = cm.fancy_weights(x_mat)
         z_mat = cm.fancy_weights(z_mat)
-        big_mat = np.block_diag(x_mat, z_mat)
+        big_mat = block_diag(x_mat, z_mat)
         def dist_func(crd0, crd1):
-            return big_mat[crds.index(crd0), crds.index(crd1)]
+            return big_mat[vrts.index(crd0), vrts.index(crd1)]
 
         sim.useBlossom = False
         x_graph = sim.graph(x_synd, dist_func=dist_func)
@@ -137,4 +151,7 @@ if __name__ == '__main__':
     n_trials = int(argv[5])
     flnm = argv[6]
     sim_type = argv[7] if len(argv) > 7 else 'iidxz'
-    run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type)
+    # run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type)
+    run_corr_dep(err_lo, err_hi, n_points, dists, n_trials, flnm)
+
+#---------------------------------------------------------------------#

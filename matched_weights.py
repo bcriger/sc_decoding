@@ -2,8 +2,12 @@ import numpy as np
 from scipy.special import binom
 import decoding_2d as dc
 import itertools as it
+import networkx as nx
 
-shifts = [(1, -1), (-1, -1), (1, 1), (-1, 1)] #data to ancilla
+shifts = [(1, -1), (-1, -1), (1, 1), (-1, 1)] # data to ancilla
+big_shifts = [(2, -2), (-2, -2), (2, 2), (-2, 2)] # ancilla to ancilla
+
+#-----------------stuff that works for square bboxes------------------#
 
 d_1 = lambda c1, c2: abs(c1[0] - c2[0]) + abs(c1[1] - c2[1])
 
@@ -25,6 +29,88 @@ def qubit_prob(a, b, nb_0, nb_1):
     n_s, n_e = (nb_0, nb_1) if d_1(nb_0, a) < d_1(nb_1, a) else (nb_1, nb_0)
     
     return num_paths(a, n_s) * num_paths (b, n_e) / num_paths(a, b)
+
+#---------------------------------------------------------------------#
+
+#------------generic DiGraph algorithms for clipped bboxes------------#
+
+def crds_to_digraph(crd_0, crd_1, vertices):
+    """
+    In order to count paths on some digraph, we first have to make
+    that graph.
+    """
+    crnrs = map(np.array, dc.corners(crd_0, crd_1))
+    deltas = [crnr - crd_0 for crnr in crnrs]
+
+    # I assume no straight lines at this stage
+    n_0 = abs(deltas[0][0]) / 2 # ancilla-ancilla steps
+    step_0 = deltas[0] / n_0
+
+    n_1 = abs(deltas[1][0]) / 2 # ancilla-ancilla steps
+    step_1 = deltas[1] / n_1
+
+    ancs_in_bbox = []
+    for p in it.product(range(n_0 + 1), range(n_1 + 1)):
+        new_anc = tuple(crd_0 + p[0] * step_0 + p[1] * step_1)
+        if not(new_anc in ancs_in_bbox) and (new_anc in vertices):
+            ancs_in_bbox.append(new_anc)
+
+    g = nx.DiGraph()
+    g.add_nodes_from(ancs_in_bbox)
+    for v, w in it.product(ancs_in_bbox, repeat=2):
+        diff = (w[0] - v[0], w[1] - v[1])
+        if diff in map(tuple, [step_0, step_1]):
+            g.add_edge(v, w)
+
+    return g
+
+def num_paths_forward(g, v=None):
+    """
+    RECURSIVE FUNCTIOOOOOOOOOON
+    """
+    if not(v):
+        no_kids = [n for n in g.nodes() if g.successors(n) == []]
+        if len(no_kids) > 1:
+            raise NotImplementedError("multiple terminal nodes")
+        v = no_kids[0]
+
+    # base case
+    if g.predecessors(v) == []:
+        g.node[v]['f_paths'] = 1
+        return 1
+    else:
+        n_paths = sum([num_paths_forward(g, w) for w in g.predecessors(v)])
+        g.node[v]['f_paths'] = n_paths
+        return n_paths
+
+def num_paths_backward(g, v=None):
+    """
+    RECURSIVE FUNCTIOOOOOOOOOON
+    """
+    if not(v):
+        batmen = [n for n in g.nodes() if g.predecessors(n) == []]
+        if len(batmen) > 1:
+            raise NotImplementedError("multiple source nodes")
+        v = batmen[0]
+
+    # base case
+    if g.successors(v) == []:
+        g.node[v]['b_paths'] = 1
+        return 1
+    else:
+        n_paths = sum([num_paths_backward(g, w) for w in g.successors(v)])
+        g.node[v]['b_paths'] = n_paths
+        return n_paths
+
+def digraph_paths(g):
+    """
+    Given a DiGraph g, I'd like to decorate its edges with the number
+    of paths from the source to the sink of the graph that traverse
+    that edge. 
+    """
+    pass
+
+#---------------------------------------------------------------------#
 
 def p_v_prime(p_v, mdl, new_err):
     """
@@ -56,13 +142,13 @@ def bbox_p_v_mat(crd_0, crd_1, vertices):
     p_mat = np.zeros((len(vertices), len(vertices)))
     crd_0, crd_1 = map(np.array, [crd_0, crd_1])
     crnrs = map(np.array, dc.corners(crd_0, crd_1))
-    #I want the dist from the start to the corners
+    #I want the displacement from the start to the corners
     deltas = [crnr - crd_0 for crnr in crnrs]
     
     # We're set up to handle paths with corners. What about straight
     # lines?
     if any(np.all(elem == np.array([0,0])) for elem in deltas):
-        delta = [_ for _ in deltas if not(np.all(_ == np.array([0,0])))][0]
+        delta = [_ for _ in deltas if not(np.all(_ == np.array([0, 0])))][0]
         n = abs(delta[0]) / 2 # ancilla-ancilla steps
         step = delta / n 
         for idx in range(n):
