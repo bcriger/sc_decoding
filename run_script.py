@@ -81,18 +81,18 @@ def run_corr_dep(err_lo, err_hi, n_points, dists, n_trials, flnm):
 
     pass
 
-def corr_decode_test(dist, err, n_trials):
+def corr_decode_test(dist, p_dep, n_trials):
     """
     Let's knock together a re-weighting decoder for depolarizing
     errors.
     I'm going to do a round of independent matchings (X and Z), then a
     round of re-weighted matchings (X and Z). 
     """
-    sim = dc2.Sim2D(dist, dist, err)
-    sim.error_model = em.depolarize(err,
+    sim = dc2.Sim2D(dist, dist, p_dep)
+    sim.error_model = em.depolarize(p_dep,
                     [[sim.layout.map[_]] for _ in sim.layout.datas])
-    x_vrts = sim.layout.x_ancs() + sim.layout.boundary_points('z')
-    z_vrts = sim.layout.z_ancs() + sim.layout.boundary_points('x')
+    x_vrts = sorted(sim.layout.x_ancs() + sim.layout.boundary_points('z'))
+    z_vrts = sorted(sim.layout.z_ancs() + sim.layout.boundary_points('x'))
     vrts = x_vrts + z_vrts
     mdl = sim.error_model.p_arr
     for _ in range(n_trials):
@@ -120,11 +120,11 @@ def corr_decode_test(dist, err, n_trials):
             diff = (crds[0][0] - crds[1][0], crds[0][1] - crds[1][1])
             if diff in SHIFTS:
                 crds_p = mw.nn_edge_switch(crds)
-                x_vrts.index(crds_p[0]), x_vrts.index(crds_p[1])
+                r_p, c_p = x_vrts.index(crds_p[0]), x_vrts.index(crds_p[1])
                 x_mat[r_p, c_p] = z_mat[r, c]
 
-        #put temp_mat in x_mat
-        x_mat = temp_mat
+        #put temp_mat in z_mat
+        z_mat = temp_mat
         
         x_mat = cm.fancy_weights(x_mat)
         z_mat = cm.fancy_weights(z_mat)

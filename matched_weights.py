@@ -178,7 +178,11 @@ def matching_p_mat(match_lst, vertices, mdl, new_err):
     p_mat = np.zeros((len(vertices), len(vertices)))
     #TODO Check for overlap, bboxes are not supposed to share vertices.
     for pair in match_lst:
-        p_mat += bbox_p_v_mat(pair[0], pair[1], vertices)
+        new_mat = bbox_p_v_mat(pair[0], pair[1], vertices)
+        if (set(zip(*p_mat.nonzero())) & set(zip(*new_mat.nonzero()))):
+            raise ValueError("bboxes can overlap, goto drawing board;")
+        else:
+            p_mat += new_mat
 
     for r, c in it.product(range(len(vertices)), repeat=2):
         p_mat[r, c] = p_v_prime(p_mat[r, c], mdl, new_err)
