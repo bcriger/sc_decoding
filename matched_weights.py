@@ -74,13 +74,14 @@ def crds_to_digraph(crd_0, crd_1, vertices):
 
 def num_paths_forward(g, v=None):
     """
-    RECURSIVE FUNCTIOOOOOOOOOON
+    Recursive function that defines the forward path-counting
+    algorithm.
+    If you ever need to make this faster, you can check for values in
+    the cache before recursing. 
     """
-    if not(v):
+    if v is None: # node labels can cast to False
         no_kids = [n for n in g.nodes() if g.successors(n) == []]
-        if len(no_kids) > 1:
-            raise NotImplementedError("multiple terminal nodes")
-        v = no_kids[0]
+        return sum([num_paths_forward(g, w) for w in no_kids])
 
     # base case
     if g.predecessors(v) == []:
@@ -93,9 +94,9 @@ def num_paths_forward(g, v=None):
 
 def num_paths_backward(g, v=None):
     """
-    RECURSIVE FUNCTIOOOOOOOOOON
+    ugly copypaste of the function above.
     """
-    if not(v):
+    if v is None: # node labels can cast to False
         batmen = [n for n in g.nodes() if g.predecessors(n) == []]
         if len(batmen) > 1:
             raise NotImplementedError("multiple source nodes")
@@ -164,6 +165,21 @@ def bbox_p_v_mat(crd_0, crd_1, vertices):
         p_mat[c, r] = edge_val
     
     return p_mat
+
+def bdy_p_mat(crd, bdy_verts, bulk_verts):
+    """
+    There are multiple shortest-length paths to the boundary.
+    Pretty much as soon as you start trying to use re-weighting, you
+    notice that the decoder is certain of a violation where in fact
+    none has occurred.
+    In order to determine where the errors are, we have to take
+    multiple paths to the boundary into account. 
+    We derive the probability for a violating error to be on a qubit in
+    the case that a boundary point is selected at random, and then a
+    path leading to that boundary point. 
+    """
+    vertices = sorted(bdy_verts, bulk_verts)
+    pass
 
 def matching_p_mat(match_lst, vertices, mdl, new_err):
     """
