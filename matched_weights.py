@@ -42,7 +42,16 @@ def crds_to_digraph(crd_0, crd_1, vertices):
     crnrs = map(np.array, dc.corners(crd_0, crd_1))
     deltas = [crnr - crd_0 for crnr in crnrs]
 
-    # I assume no straight lines at this stage
+    g = nx.DiGraph()
+
+    if any(np.all(elem == np.array([0,0])) for elem in deltas):
+        delta = [_ for _ in deltas if not(np.all(_ == np.array([0, 0])))][0]
+        n = abs(delta[0]) / 2 # ancilla-ancilla steps
+        step = delta / n 
+        for j in range(n):
+            g.add_edge(tuple(crd_0 + j * step), tuple(crd_0 + (j + 1) * step))
+        return g
+    
     n_0 = abs(deltas[0][0]) / 2 # ancilla-ancilla steps
     step_0 = deltas[0] / n_0
 
@@ -55,7 +64,6 @@ def crds_to_digraph(crd_0, crd_1, vertices):
         if not(new_anc in ancs_in_bbox) and (new_anc in vertices):
             ancs_in_bbox.append(new_anc)
 
-    g = nx.DiGraph()
     g.add_nodes_from(ancs_in_bbox)
     for v, w in it.product(ancs_in_bbox, repeat=2):
         diff = (w[0] - v[0], w[1] - v[1])
@@ -108,7 +116,14 @@ def digraph_paths(g):
     of paths from the source to the sink of the graph that traverse
     that edge. 
     """
-    pass
+    g_b_paths, g_f_paths = num_paths_backward(g), num_paths_forward(g)
+    if g_b_paths != g_f_paths:
+        raise ValueError("Graph has different number of paths in "
+            "forward/backward directions: {}\n{}".format(g.nodes(),
+                g.edges()))
+    for e in g.edges():
+        g[e[0]][e[1]]['p_path'] = float(g.node[e[0]]['f_paths'] * g.node[e[1]]['b_paths']) / g_f_paths
+
 
 #---------------------------------------------------------------------#
 
@@ -140,47 +155,13 @@ def bbox_p_v_mat(crd_0, crd_1, vertices):
     """
     vertices = sorted(vertices)
     p_mat = np.zeros((len(vertices), len(vertices)))
-    crd_0, crd_1 = map(np.array, [crd_0, crd_1])
-    crnrs = map(np.array, dc.corners(crd_0, crd_1))
-    #I want the displacement from the start to the corners
-    deltas = [crnr - crd_0 for crnr in crnrs]
-    
-    # We're set up to handle paths with corners. What about straight
-    # lines?
-    if any(np.all(elem == np.array([0,0])) for elem in deltas):
-        delta = [_ for _ in deltas if not(np.all(_ == np.array([0, 0])))][0]
-        n = abs(delta[0]) / 2 # ancilla-ancilla steps
-        step = delta / n 
-        for idx in range(n):
-            p_mat[crd_0 + idx * step, crd_0 + (idx + 1) * step] = 1.
-
-        return p_mat
-
-    n_0 = abs(deltas[0][0]) / 2 # ancilla-ancilla steps
-    step_0 = deltas[0] / n_0
-
-    n_1 = abs(deltas[1][0]) / 2 # ancilla-ancilla steps
-    step_1 = deltas[1] / n_1
-
-    ancs_in_bbox = []
-    for p in it.product(range(n_0 + 1), range(n_1 + 1)):
-        new_anc = tuple(crd_0 + p[0] * step_0 + p[1] * step_1)
-        if not(new_anc in ancs_in_bbox):
-            ancs_in_bbox.append(new_anc)
-    
-    # this is dodgy, I'm going to invert a 2-by-2 matrix to get
-    # co-ordinates
-    step_mat = np.matrix(np.vstack([step_0, step_1]).T).I
-    b = tuple(map(int, np.rint(step_mat * np.matrix(crd_1 - crd_0).T)))
-    for pair in it.product(map(np.array, ancs_in_bbox), repeat=2):
-        delta = pair[1] - pair[0]
-        if np.all(delta == step_0) or np.all(delta == step_1):
-            d_0, d_1 = pair[0] - crd_0, pair[1] - crd_0
-            nb_0 = map(int, np.rint(step_mat * np.matrix(d_0).T))
-            nb_1 = map(int, np.rint(step_mat * np.matrix(d_1).T))
-            p_v = qubit_prob((0, 0), b, nb_0, nb_1)
-            p_mat[vertices.index(tuple(pair[0])),
-                  vertices.index(tuple(pair[1]))] = p_v        
+    g = crds_to_digraph(crd_0, crd_1, vertices)
+    digraph_paths(g) #subroutine
+    for u, v in g.edges():
+        r, c = vertices.index(u), vertices.index(v)
+        edge_val = g[u][v]['p_path']
+        p_mat[r, c] = edge_val
+        p_mat[c, r] = edge_val
     
     return p_mat
 
@@ -195,7 +176,7 @@ def matching_p_mat(match_lst, vertices, mdl, new_err):
     """
     vertices = sorted(vertices)
     p_mat = np.zeros((len(vertices), len(vertices)))
-
+    #TODO Check for overlap, bboxes are not supposed to share vertices.
     for pair in match_lst:
         p_mat += bbox_p_v_mat(pair[0], pair[1], vertices)
 
