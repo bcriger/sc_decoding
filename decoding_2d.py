@@ -304,7 +304,7 @@ class Sim2D(object):
                 bdy_pt = close_pts[(u,v)]
                 vert = u if isinstance(u, int) else v
                 pauli_lst.append(self.path_pauli(bdy_pt, crds[vert], err))
-                matchups.append((bdy_pt, crds[vert]))
+                matchups.append(crds[vert]) #bdy matches roll solo
             else:
                 pass #both boundary points, no correction
 

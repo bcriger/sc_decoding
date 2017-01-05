@@ -128,6 +128,16 @@ def digraph_paths(g):
 
 #---------------------------------------------------------------------#
 
+def digraph_to_mat(g, vertices):
+    digraph_paths(g) #subroutine
+    p_mat = np.zeros((len(vertices), len(vertices)))
+    for u, v in g.edges():
+        r, c = vertices.index(u), vertices.index(v)
+        edge_val = g[u][v]['p_path']
+        p_mat[r, c] = edge_val
+        p_mat[c, r] = edge_val
+    return p_mat
+
 def p_v_prime(p_v, mdl, new_err):
     """
     Given a probability p_v that an error violating a given stabiliser
@@ -155,18 +165,10 @@ def bbox_p_v_mat(crd_0, crd_1, vertices):
     of the rotated co-ordinate system.
     """
     vertices = sorted(vertices)
-    p_mat = np.zeros((len(vertices), len(vertices)))
     g = crds_to_digraph(crd_0, crd_1, vertices)
-    digraph_paths(g) #subroutine
-    for u, v in g.edges():
-        r, c = vertices.index(u), vertices.index(v)
-        edge_val = g[u][v]['p_path']
-        p_mat[r, c] = edge_val
-        p_mat[c, r] = edge_val
-    
-    return p_mat
+    return digraph_to_mat(g, vertices)
 
-def bdy_p_mat(crd, bdy_verts, bulk_verts):
+def bdy_p_v_mat(crd, bdy_verts, bulk_verts):
     """
     There are multiple shortest-length paths to the boundary.
     Pretty much as soon as you start trying to use re-weighting, you
@@ -178,10 +180,18 @@ def bdy_p_mat(crd, bdy_verts, bulk_verts):
     the case that a boundary point is selected at random, and then a
     path leading to that boundary point. 
     """
-    vertices = sorted(bdy_verts, bulk_verts)
-    pass
+    vertices = sorted(bdy_verts + bulk_verts)
+    bdy_dists = [dc.pair_dist(crd, v) for v in bdy_verts]
+    d = min(bdy_dists)
+    close_pts = [bdy_verts[_] for _ in range(len(bdy_verts))
+                                            if bdy_dists[_] == d]
+    g = reduce(nx.compose,
+                [crds_to_digraph(crd, pt, vertices)
+                    for pt in close_pts])
 
-def matching_p_mat(match_lst, vertices, mdl, new_err):
+    return digraph_to_mat(g, vertices)
+
+def matching_p_mat(match_lst, bdy_verts, bulk_verts, mdl, new_err):
     """
     lil wrapper for what's above, we first sum up all the p_v matrices
     from individual edges, then convert these to probabilities of
@@ -190,11 +200,17 @@ def matching_p_mat(match_lst, vertices, mdl, new_err):
     boundary-boundary edges are gone, and everything's been converted
     to co-ordinates.
     """
-    vertices = sorted(vertices)
+    vertices = sorted(bdy_verts + bulk_verts)
     p_mat = np.zeros((len(vertices), len(vertices)))
     #TODO Check for overlap, bboxes are not supposed to share vertices.
-    for pair in match_lst:
-        new_mat = bbox_p_v_mat(pair[0], pair[1], vertices)
+    for thing in match_lst:
+        if len(thing[0]) == 2:
+            # it's a list of two tuples
+            new_mat = bbox_p_v_mat(pair[0], pair[1], vertices)
+        elif len(thing[0]) == 1:
+            # it's a length-2 tuple
+            new_mat = bdy_p_v_mat(pair[0], pair[1], vertices)
+    
         if (set(zip(*p_mat.nonzero())) & set(zip(*new_mat.nonzero()))):
             raise ValueError("bboxes can overlap, goto drawing board;")
         else:
