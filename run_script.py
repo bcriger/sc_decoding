@@ -117,7 +117,7 @@ def corr_decode_test(dist, p_dep, n_trials):
                 crds_p = mw.nn_edge_switch(crds)
                 r_p, c_p = z_vs.index(crds_p[0]), z_vs.index(crds_p[1])
                 temp_mat[r_p, c_p] = x_mat[r, c]
-        
+
         #put z_mat in x_mat
         x_mat = np.amin(x_mat) * np.ones_like(x_mat) #make sure it's set to background level
         for r, c in it.product(range(len(x_vs)), repeat=2):
@@ -130,7 +130,7 @@ def corr_decode_test(dist, p_dep, n_trials):
 
         #put temp_mat in z_mat
         z_mat = temp_mat
-        
+
         x_mat = cm.fancy_weights(x_mat)
         z_mat = cm.fancy_weights(z_mat)
         big_mat = block_diag(x_mat, z_mat)
