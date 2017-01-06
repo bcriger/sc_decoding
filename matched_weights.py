@@ -204,12 +204,12 @@ def matching_p_mat(match_lst, bdy_verts, bulk_verts, mdl, new_err):
     p_mat = np.zeros((len(vertices), len(vertices)))
     #TODO Check for overlap, bboxes are not supposed to share vertices.
     for thing in match_lst:
-        if len(thing[0]) == 2:
+        if hasattr(thing[0], "__iter__"):
             # it's a list of two tuples
-            new_mat = bbox_p_v_mat(pair[0], pair[1], vertices)
-        elif len(thing[0]) == 1:
+            new_mat = bbox_p_v_mat(thing[0], thing[1], vertices)
+        elif len(thing) == 2:
             # it's a length-2 tuple
-            new_mat = bdy_p_v_mat(pair[0], pair[1], vertices)
+            new_mat = bdy_p_v_mat(thing, bdy_verts, bulk_verts)
     
         if (set(zip(*p_mat.nonzero())) & set(zip(*new_mat.nonzero()))):
             raise ValueError("bboxes can overlap, goto drawing board;")
