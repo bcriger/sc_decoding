@@ -4,10 +4,19 @@ correct, given a syndrome, by brute force.
 This is a subroutine for RG decoding, and it can be used to generate
 training data for the NN.  
 """
+#I hope, one day, that I don't have to do this anymore:
+from sys import version_info
+if version_info[0] == 3:
+    import pickle as pkl #You have to change this for python 3.
+elif version_info[0] == 2:
+    import cPickle as pkl
+else:
+    raise ImportError("Can't understand python version: "
+                        "{}".format(version_info))
+
 
 import circuit_metric as cm
 import circuit_metric.SCLayoutClass as SCLayoutClass
-import cPickle as pkl #You have to change this for python 3.
 import decoding_2d as dc
 import error_model as em
 from functools import reduce
@@ -333,11 +342,44 @@ def dist_5_log_error_rate(p_arr):
     
     return log_ps, blsm_log_ps
 
+def dumbest_dataset(d, p, total_sz, flnm=None):
+    """
+    Tries the dumbest possible technique, making a bunch of random
+    samples so we can evaluate the gradient without any hassle.
+    p: float (between 0 and 0.5, to make sense it should be ~0.05)
+    total_sz: combined number of training, validation and test instances.
+    """
+    if not(d % 2):
+        raise ValueError("doesn't work for even d")
+    n_synds = int((d**2 - 1) / 2)
+    sim = dc.Sim2D(d, d, p)
+    input_arr = np.zeros((total_sz, n_synds))
+    label_arr = np.zeros(total_sz, dtype=np.int_)
+    _, log_z = sim.layout.logicals()
+    ancs = sorted([sim.layout.map[anc] for anc in sim.layout.z_ancs()])
+    
+    for idx in range(total_sz):
+        err = sim.random_error()
+        x_synd, z_synd = sim.syndromes(err)
+        #x errors only -> z syndromes only
+        input_arr[idx, :] = map(float, synd_to_bits(z_synd, ancs))
+        #does correcting to the origin result in a logical?
+        dumb_x_corr, _ = sim.dumb_correction((x_synd, z_synd), True)
+        label_arr[idx] = (dumb_x_corr * err).com(log_z)
+    
+    if flnm is None:
+        return {"input": input_arr, "labels": label_arr}
+    else:
+        with open(flnm, 'w') as phil:
+            pkl.dump({"input": input_arr, "labels": label_arr}, phil)
+        pass
+
 def dist_3_corr_log_error_rate(p_arr):
     """
     For a depolarizing error model, I evaluate the different
     probabilities of logical error (X, Y, or Z)
     """
+    pass
 
 
 #-------------------------convenience functions-----------------------#

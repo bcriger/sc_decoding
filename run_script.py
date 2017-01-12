@@ -107,7 +107,7 @@ def corr_decode_test(dist, p_dep, n_trials):
         z_matches = sim.graphAndCorrection(z_synd, 'x', return_matching=True)
         x_mat = mw.matching_p_mat(x_matches, x_bdy_vs, x_bulk_vs, mdl, 'x')
         z_mat = mw.matching_p_mat(z_matches, z_bdy_vs, z_bulk_vs, mdl, 'z')
-        temp_mat = np.amin(x_mat) * np.ones_like(x_mat) #x_mat/z_mat here both good.
+        temp_mat = np.zeros_like(x_mat) #x_mat/z_mat here both good.
 
         #put x_mat in temp_mat
         for r, c in it.product(range(len(x_vs)), repeat=2):
@@ -119,7 +119,7 @@ def corr_decode_test(dist, p_dep, n_trials):
                 temp_mat[r_p, c_p] = x_mat[r, c]
 
         #put z_mat in x_mat
-        x_mat = np.amin(x_mat) * np.ones_like(x_mat) #make sure it's set to background level
+        x_mat = np.zeros_like(x_mat) #x_mat/z_mat here both good.
         for r, c in it.product(range(len(x_vs)), repeat=2):
             crds = (z_vs[r], z_vs[c])
             diff = (crds[0][0] - crds[1][0], crds[0][1] - crds[1][1])

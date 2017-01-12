@@ -3,20 +3,22 @@ import numpy as np
 import time
 from datetime import timedelta
 from itertools import chain
+import math
 
 def weight_variable(shape):
-    initial = tf.truncated_normal(shape, stddev=0.01)#0.01, 0.05, 0.1
+    initial = tf.truncated_normal(shape, stddev=1. / math.sqrt(float(shape[0])))#0.01, 0.05, 0.1
     return tf.Variable(initial)
 
 def bias_variable(shape):
-    initial = tf.constant(0.05, shape=shape)
+    initial = tf.truncated_normal(shape, stddev=1. / math.sqrt(float(shape[0])))
+    # initial = tf.constant(0.05, shape=shape)
     return tf.Variable(initial)
 
 distance = 5
 inputs = 12
 outputs = 2
-nodes = [12]
-first = 0
+nodes = [48]
+first = 1
 ff = 'd=5_p=0.09'
 #x_anc_pos = [10, 8, 30, 28, 20, 18, 40, 38, 1, 0, 47, 48]
 FLAGS_train = True	# True : for training (False : for prediction)
@@ -28,8 +30,8 @@ a = []
 b = []
 c = []
 
-#with open(ff+'_samples.txt', 'r') as f:
-with open(ff+'_blossom_dumb.txt', 'r') as f:
+#with open(ff + '_samples.txt', 'r') as f:
+with open(ff + '_blossom_dumb.txt', 'r') as f:
     m = 0
     for line in f: # iterate over each line
         m += 1
@@ -62,68 +64,68 @@ with open(ff+'_blossom_dumb.txt', 'r') as f:
     f.close()
 
 #---------------- Get a mean value of 0 for each of the 12 bits of input ------------
-sum_inp = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-curr_mean = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-for bit in range(inputs):
-    for synd in range(len(a[:500])):
-        #sum_inp[bit] += a[synd][bit]
-        sum_inp[bit] += a[synd][bit] * c[synd][0]
-    #curr_mean[bit] = sum_inp[bit]/4000
-    curr_mean[bit] = sum_inp[bit]/749757
-    #print(curr_mean[bit])
+# sum_inp = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# curr_mean = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# for bit in range(inputs):
+#     for synd in range(len(a[:500])):
+#         #sum_inp[bit] += a[synd][bit]
+#         sum_inp[bit] += a[synd][bit] * c[synd][0]
+#     #curr_mean[bit] = sum_inp[bit]/4000
+#     curr_mean[bit] = sum_inp[bit]/749757
+#     #print(curr_mean[bit])
 
-for bit in range(inputs):
-    for synd in range(len(a[:500])):
-        a[synd][bit] -= curr_mean[bit]
-#print(curr_mean)
+# for bit in range(inputs):
+#     for synd in range(len(a[:500])):
+#         a[synd][bit] -= curr_mean[bit]
+# #print(curr_mean)
 
-sum_inp = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-for bit in range(inputs):
-    for synd in range(len(a[:500])):
-        #sum_inp[bit] += a[synd][bit]
-        sum_inp[bit] += a[synd][bit] * c[synd][0]
-    #curr_mean[bit] = sum_inp[bit]/4000
-    curr_mean[bit] = sum_inp[bit]/749757
-    #print(curr_mean[bit])
-#-----------------------------------------------------------------------------------
+# sum_inp = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# for bit in range(inputs):
+#     for synd in range(len(a[:500])):
+#         #sum_inp[bit] += a[synd][bit]
+#         sum_inp[bit] += a[synd][bit] * c[synd][0]
+#     #curr_mean[bit] = sum_inp[bit]/4000
+#     curr_mean[bit] = sum_inp[bit]/749757
+#     #print(curr_mean[bit])
+# #-----------------------------------------------------------------------------------
 
-#--------- Subtract all elements of the test set by the mean value calculated for the training set ---------
-for bit in range(inputs):
-    for synd in range(len(a[500:4000])):
-        a[synd][bit] -= curr_mean[bit]
-#-----------------------------------------------------------------------------------------------------------
+# #--------- Subtract all elements of the test set by the mean value calculated for the training set ---------
+# for bit in range(inputs):
+#     for synd in range(len(a[500:4000])):
+#         a[synd][bit] -= curr_mean[bit]
+# #-----------------------------------------------------------------------------------------------------------
 
-#--------- Get a standard deviation value of 1 for each of the 12 bits of input -----
-sum_col = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-var = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-std_dev = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-for bit in range(inputs):
-    for synd in range(len(a[:500])):
-        sum_col[bit] += (a[synd][bit] - curr_mean[bit])**2
-    var[bit] = sum_col[bit]/500
-    std_dev[bit] = np.sqrt(var[bit])
-    #print(std_dev[bit])
+# #--------- Get a standard deviation value of 1 for each of the 12 bits of input -----
+# sum_col = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# var = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# std_dev = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# for bit in range(inputs):
+#     for synd in range(len(a[:500])):
+#         sum_col[bit] += (a[synd][bit] - curr_mean[bit])**2
+#     var[bit] = sum_col[bit]/500
+#     std_dev[bit] = np.sqrt(var[bit])
+#     #print(std_dev[bit])
 
-for bit in range(inputs):
-    for synd in range(len(a[:500])):
-        a[synd][bit] = a[synd][bit] / std_dev[bit]
-#print(std_dev)
+# for bit in range(inputs):
+#     for synd in range(len(a[:500])):
+#         a[synd][bit] = a[synd][bit] / std_dev[bit]
+# #print(std_dev)
 
-sum_col = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-var = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-std_dev = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-for bit in range(inputs):
-    for synd in range(len(a[:500])):
-        sum_col[bit] += (a[synd][bit] - curr_mean[bit])**2
-    var[bit] = sum_col[bit]/500
-    std_dev[bit] = np.sqrt(var[bit])
-    #print(std_dev[bit])
-#-----------------------------------------------------------------------------------
+# sum_col = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# var = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# std_dev = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+# for bit in range(inputs):
+#     for synd in range(len(a[:500])):
+#         sum_col[bit] += (a[synd][bit] - curr_mean[bit])**2
+#     var[bit] = sum_col[bit]/500
+#     std_dev[bit] = np.sqrt(var[bit])
+#     #print(std_dev[bit])
+# #-----------------------------------------------------------------------------------
 
-#--------- Divide all elements of the test set by the std_dev value calculated for the training set ---------
-for bit in range(inputs):
-    for synd in range(len(a[500:4000])):
-        a[synd][bit] = a[synd][bit] / std_dev[bit]
+# #--------- Divide all elements of the test set by the std_dev value calculated for the training set ---------
+# for bit in range(inputs):
+#     for synd in range(len(a[500:4000])):
+#         a[synd][bit] = a[synd][bit] / std_dev[bit]
 #-----------------------------------------------------------------------------------------------------------
 
 '''
@@ -221,8 +223,8 @@ y_pred = y_nn
 #y_pred_cls = tf.argmax(y_nn, dimension=1)
 #print(y_pred_cls.get_shape())
 #cross_entropy = -tf.reduce_sum(y_data * tf.log(y_pred), reduction_indices=[1])
-cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=y_pred, labels=y_data)
-#cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=y_nn, labels=y_data)
+# cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=y_pred, labels=y_data)
+cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits=y_nn, labels=y_data)
 #cross_entropy = tf.square(y_nn - y_data)
 cost = tf.reduce_mean(cross_entropy)
 train = tf.train.AdamOptimizer(learning_rate=1e-1).minimize(cost)
@@ -251,13 +253,13 @@ feed_dict_train = {x_data: train_inputs, y_data: train_targets}
 
 #print(feed_dict_test200[y_data])
 def myAccuracy(fd, data=False):
-    predictions = sess.run(y_nn, feed_dict=fd)
+    predictions = sess.run(tf.nn.softmax(y_nn), feed_dict=fd)
     
     cnt = 0
     pl = len(predictions)
     for i in range(pl):
-        if (predictions[i][0] > 0.0 and fd[y_data][i][0] > 0.5) or \
-           (predictions[i][0] < 0.0 and fd[y_data][i][0] < 0.5):
+        if (predictions[i][0] > 0.5 and fd[y_data][i][0] > 0.5) or \
+           (predictions[i][0] < 0.5 and fd[y_data][i][0] < 0.5):
         #if np.round_(predictions[i][0]) == np.round_(fd[y_data][i][0]) and \
         #   np.round_(predictions[i][1]) == np.round_(fd[y_data][i][1]):
             cnt += 1

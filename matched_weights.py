@@ -216,10 +216,12 @@ def matching_p_mat(match_lst, bdy_verts, bulk_verts, mdl, new_err):
         else:
             p_mat += new_mat
 
+    #TODO Not all elements in the adj mat are edges. Many should get 0 prob, not p_v=0.
     for r, c in it.product(range(len(vertices)), repeat=2):
-        p_mat[r, c] = p_v_prime(p_mat[r, c], mdl, new_err)
+        if (vertices[r][0] - vertices[c][0], vertices[r][1] - vertices[c][1]) in big_shifts:
+            p_mat[r, c] = p_v_prime(p_mat[r, c], mdl, new_err)
 
-    return p_mat
+    return p_mat - np.diag(np.diag(p_mat)) #no self-loops
 
 def nn_edge_switch(crds):
     """

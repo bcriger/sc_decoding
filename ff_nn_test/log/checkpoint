@@ -1,0 +1,3 @@
+model_checkpoint_path: "trained_decoder.ckpt-1999"
+all_model_checkpoint_paths: "trained_decoder.ckpt-999"
+all_model_checkpoint_paths: "trained_decoder.ckpt-1999"

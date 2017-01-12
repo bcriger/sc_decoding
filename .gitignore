@@ -5,3 +5,5 @@
 *~
 *.prof
 */.ipynb_checkpoints/
+*.ckpt*
+checkpoint
