@@ -1,4 +1,4 @@
-from circuit_metric.SCLayoutClass import SCLayout
+from circuit_metric.SCLayoutClass import SCLayout, TCLayout
 from decoding_utils import blossom_path, cdef_str
 import error_model as em
 import itertools as it
@@ -37,7 +37,15 @@ class Sim2D(object):
         if boundary_conditions == 'rotated':
             self.layout = SCLayout(dx) #TODO dy
             self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
-        elif boundary_conditions == 'closed'
+        elif boundary_conditions == 'closed':
+            self.layout = TCLayout(dx) #TODO dy
+            self.errors = {
+                            'II' : 0, 'IX' : 0, 'IY' : 0, 'IZ' : 0,
+                            'XI' : 0, 'XX' : 0, 'XY' : 0, 'XZ' : 0,
+                            'YI' : 0, 'YX' : 0, 'YY' : 0, 'YZ' : 0,
+                            'ZI' : 0, 'ZX' : 0, 'ZY' : 0, 'ZZ' : 0
+                        }
+        
         self.error_model = em.PauliErrorModel([(1. - p)**2, p * (1. - p), p * (1. - p), p**2],
             [[self.layout.map[_]] for _ in self.layout.datas])
 
@@ -76,6 +84,8 @@ class Sim2D(object):
         There's an optional argument, origin, that will just move
         all observed syndromes to the same corner of the lattice, near
         the origin.
+
+        TODO: Make it work with toric BC?
         """
         corr_dict = {'Z': sp.Pauli(), 'X': sp.Pauli()}
         if origin:
@@ -113,19 +123,21 @@ class Sim2D(object):
             (v1, v2, -dist_func(crds[v1], crds[v2]))
             for v1, v2 in it.combinations(syndrome, 2) )
 
-        #boundary vertices, edges from boundary distance
-        for s in syndrome:
-            b_info = self.bdy_info(crds[s])
-            closest_pt = b_info[1]
-            dist = dist_func(crds[s], closest_pt)
-            g.add_edge(s, (s, 'b'), weight=-dist, close_pt=closest_pt)
+        if self.boundary_conditions == 'rotated':
+            #boundary vertices, edges from boundary distance
+            for s in syndrome:
+                b_info = self.bdy_info(crds[s])
+                closest_pt = b_info[1]
+                dist = dist_func(crds[s], closest_pt)
+                g.add_edge(s, (s, 'b'), weight=-dist, close_pt=closest_pt)
 
-        #weight-0 edges between boundary vertices
-        g.add_weighted_edges_from(
-            ((v1, 'b'), (v2, 'b'), 0.)
-            for v1, v2 in
-            it.combinations(syndrome, 2)
-            )
+            #weight-0 edges between boundary vertices
+            g.add_weighted_edges_from(
+                ((v1, 'b'), (v2, 'b'), 0.)
+                for v1, v2 in
+                it.combinations(syndrome, 2)
+                )
+    
         return g
 
     def correction(self, graph, err):
@@ -260,33 +272,34 @@ class Sim2D(object):
             edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
             e += 1
 
-        close_pts = {}
-        for s in syndrome:
-            v1 = s
-            v2 = str(s) + ', b'
-            uid = int(node2id[v1])
-            vid = int(node2id[v2])
-            bd_info = self.bdy_info(crds[s])
-            close_pt = bd_info[1]
-            if dist_func:
-                wt = dist_func(crds[s], close_pt)
-            else:
-                wt = self.bdy_info(crds[s])[0]
-            
-            close_pts[(v1,v2)] = close_pt
-            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
-            e += 1
+        if self.boundary_conditions == 'rotated': 
+            close_pts = {}
+            for s in syndrome:
+                v1 = s
+                v2 = str(s) + ', b'
+                uid = int(node2id[v1])
+                vid = int(node2id[v2])
+                bd_info = self.bdy_info(crds[s])
+                close_pt = bd_info[1]
+                if dist_func:
+                    wt = dist_func(crds[s], close_pt)
+                else:
+                    wt = self.bdy_info(crds[s])[0]
+                
+                close_pts[(v1,v2)] = close_pt
+                edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
+                e += 1
 
-        for u, v in it.combinations(syndrome, 2):
-            u1 = str(u)
-            v1 = str(v)
-            u2 = u1 + ', b'
-            v2 = v1 + ', b'
-            uid = int(node2id[u2])
-            vid = int(node2id[v2])
-            wt = 0
-            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
-            e += 1
+            for u, v in it.combinations(syndrome, 2):
+                u1 = str(u)
+                v1 = str(v)
+                u2 = u1 + ', b'
+                v2 = v1 + ', b'
+                uid = int(node2id[u2])
+                vid = int(node2id[v2])
+                wt = 0
+                edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
+                e += 1
 
         # print( 'generated {0} edges.'.format(e) )
 
@@ -324,17 +337,40 @@ class Sim2D(object):
         single letter recording the resulting logical error (may be I,
         X, Y or Z)
         """
-        anticom_dict = {
-                        ( 0, 0 ) : 'I',
-                        ( 0, 1 ) : 'X',
-                        ( 1, 0 ) : 'Z',
-                        ( 1, 1 ) : 'Y'
-                    }
-        x_bar, z_bar = self.layout.logicals()
         loop = error * x_corr * z_corr
-        x_com, z_com = x_bar.com(loop), z_bar.com(loop)
 
-        return anticom_dict[ ( x_com, z_com ) ]
+        if self.boundary_conditions == 'rotated':
+            anticom_dict = {
+                            ( 0, 0 ) : 'I',
+                            ( 0, 1 ) : 'X',
+                            ( 1, 0 ) : 'Z',
+                            ( 1, 1 ) : 'Y'
+                        }
+            x_bar, z_bar = self.layout.logicals()
+            com_tpl = x_bar.com(loop), z_bar.com(loop)
+        elif self.boundary_conditions == 'closed':
+            anticom_dict = {
+                            (0, 0, 0, 0) : 'II', 
+                            (0, 0, 0, 1) : 'IX', 
+                            (0, 0, 1, 0) : 'XI', 
+                            (0, 0, 1, 1) : 'XX', 
+                            (0, 1, 0, 0) : 'IZ', 
+                            (0, 1, 0, 1) : 'IY', 
+                            (0, 1, 1, 0) : 'XZ', 
+                            (0, 1, 1, 1) : 'XY',  
+                            (1, 0, 0, 0) : 'ZI', 
+                            (1, 0, 0, 1) : 'ZX', 
+                            (1, 0, 1, 0) : 'YI', 
+                            (1, 0, 1, 1) : 'YX', 
+                            (1, 1, 0, 0) : 'ZZ', 
+                            (1, 1, 0, 1) : 'ZY', 
+                            (1, 1, 1, 0) : 'YZ', 
+                            (1, 1, 1, 1) : 'YY' 
+                        }
+
+            logs = self.layout.logicals()
+            com_tpl = tuple(op.com(loop) for op in logs)
+        return anticom_dict[com_tpl]
 
     def run(self, n_trials, verbose=False, progress=True, dist_func=None):
         """
@@ -389,6 +425,9 @@ class Sim2D(object):
         one of the acceptable boundary vertices, depending on
         syndrome type (X or Z).
         """
+        if self.boundary_conditions=='closed':
+            return None, None
+
         min_dist = 4 * max(self.dx, self.dy) #any impossibly large value will do
         err_type = 'Z' if crd in self.layout.x_ancs() else 'X'
         for pt in self.layout.boundary_points(err_type):
@@ -396,7 +435,7 @@ class Sim2D(object):
             if new_dist < min_dist:
                 min_dist, close_pt = new_dist, pt
 
-        return min_dist, close_pt
+        return min_dist, close_pt 
 
     def path_pauli(self, crd_0, crd_1, err_type):
         """
@@ -410,22 +449,41 @@ class Sim2D(object):
         this corner.
         """
         err_type = err_type.upper()
+        if self.boundary_conditions == 'rotated':
+            mid_v = diag_intersection(crd_0, crd_1, self.layout.ancillas.values())
 
-        mid_v = diag_intersection(crd_0, crd_1, self.layout.ancillas.values())
+            pth_0, pth_1 = diag_pth(crd_0, mid_v), diag_pth(mid_v, crd_1)
 
-        pth_0, pth_1 = diag_pth(crd_0, mid_v), diag_pth(mid_v, crd_1)
+        elif self.boundary_conditions == 'closed':
+            pth_0 = [
+                        (x, crd_0[1])
+                        for x in short_seq(crd_0[0], crd_1[0], self.dx)
+                    ]
+            pth_1 = [
+                        (crd_1[0], y)
+                        for y in short_seq(crd_0[1], crd_1[1], self.dy)
+                    ]
 
         #path on lattice, uses idxs
         p = [self.layout.map[crd] for crd in list(pth_0) + list(pth_1)]
-
-        pl = sp.Pauli(p, []) if err_type == 'X' else sp.Pauli([], p)
-
+        pl = sp.X(p) if err_type == 'X' else sp.Z(p)
         return pl
 
 
 #-----------------------convenience functions-------------------------#
 product = lambda itrbl: reduce(mul, itrbl, sp.Pauli())
 
+def short_seq(a, b, l):
+    """
+    I'm trying to figure out whether 'tis nobler to step from a to b 
+    around one direction on a torus l squares wide, or whether to go 
+    the other way.
+    """
+    d = abs(b - a)
+    if d < 2*l - d:
+        return range(min(a, b) + 1, max(a, b), 2)
+    else:
+        return range(min(a, b) - 1, -1, -2) + range(max(a, b) + 1, 2*l, 2)
 
 def pair_dist(crd_0, crd_1):
     """
