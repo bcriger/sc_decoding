@@ -210,32 +210,54 @@ def run_training():
                         labels_placeholder,
                         data_sets.test)
 
+        #obtain logical ps
+        ps = np.linspace(0.001, 0.5, 20)
+        log_ps = np.zeros_like(ps)
+        n_trials = 20000
+        for pdx, p in enumerate(ps):
+            data_dict = ss.dumbest_dataset(5, p, n_trials)
+            data_set = input_data.DataSet(data_dict['input'], data_dict['labels'])
+            feed_dict = fill_feed_dict(data_set, synds_placeholder, labels_placeholder)
+
+            # Evaluate against the data set.
+            log_ps[pdx] = do_eval(sess,
+                                  eval_correct,
+                                  synds_placeholder,
+                                  labels_placeholder,
+                                  data_set, 
+                                  mode='return')
+                        
+        with open('log_ps.pkl', 'w') as phil:
+            pkl.dump(log_ps, phil)
 
 def run_examination():
     """
     evaluates the performance of a trained decoder for ps running from
     10**-3 to 0.5, 50 points.
     """
-    ps = np.linspace(0.001, 0.5, 50)
+    ps = np.linspace(0.001, 0.5, 20)
     log_ps = np.zeros_like(ps)
+    n_trials = 5000
+
+    synds_placeholder, labels_placeholder = placeholder_inputs(n_trials)
+
+    logits = scn.inference(synds_placeholder, FLAGS.units_lst)
+
+    eval_correct = scn.evaluation(logits, labels_placeholder)
+    
+    init = tf.global_variables_initializer()
+    sess = tf.Session()
+    sess.run(init)
+    
+    checkpoint_file = os.path.join(FLAGS.log_dir, 'trained_decoder.ckpt-1999')
+    saver = tf.train.import_meta_graph(checkpoint_file + '.meta')
+    
+    saver.restore(sess, checkpoint_file)
+
     for pdx, p in enumerate(ps):
-        data_dict = ss.dist_5_dumbest_dataset(p, 20000)
+        data_dict = ss.dumbest_dataset(5, p, n_trials)
         data_set = input_data.DataSet(data_dict['input'], data_dict['labels'])
         with tf.Graph().as_default():
-            
-            synds_placeholder, labels_placeholder = placeholder_inputs(
-                    data_set.inputs.shape[0])
-
-            logits = scn.inference(synds_placeholder, FLAGS.units_lst)
-
-            eval_correct = scn.evaluation(logits, labels_placeholder)
-
-            saver = tf.train.Saver()
-            checkpoint_file = os.path.join(FLAGS.log_dir, 'trained_decoder.ckpt')
-            
-            sess = tf.Session()
-
-            saver.restore(sess, checkpoint_file)
             
             feed_dict = fill_feed_dict(data_set, synds_placeholder, labels_placeholder)
 
@@ -313,4 +335,5 @@ if __name__ == '__main__':
     )
 
     FLAGS, unparsed = parser.parse_known_args()
-    tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    # tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+    tf.app.run(main=main)

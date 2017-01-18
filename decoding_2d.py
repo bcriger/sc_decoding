@@ -21,17 +21,25 @@ class Sim2D(object):
     code. We take a surface code of distance d, and put it up against
     an IID X/Z error model with probability p.
     """
-    def __init__(self, dx, dy, p, useBlossom=True):
+    def __init__(self, dx, dy, p, useBlossom=True, boundary_conditions='rotated'):
+        """
+        I set optional BC here, for now you can set 'rotated' or
+        'closed'.
+        'open' might be coming in the future, but probably not. 
+        """
         #user-input properties
         self.dx = dx
         self.dy = dy
         self.useBlossom = useBlossom
+        self.boundary_conditions = boundary_conditions
 
         #derived properties
-        self.layout = SCLayout(dx) #TODO dy
+        if boundary_conditions == 'rotated':
+            self.layout = SCLayout(dx) #TODO dy
+            self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
+        elif boundary_conditions == 'closed'
         self.error_model = em.PauliErrorModel([(1. - p)**2, p * (1. - p), p * (1. - p), p**2],
             [[self.layout.map[_]] for _ in self.layout.datas])
-        self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
 
         if self.useBlossom:
             # load C blossom library
