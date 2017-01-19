@@ -112,7 +112,12 @@ class Sim2D(object):
         NetworkX does). We use negative edge weights to make this
         happen.
         """
-        dist_func = dist_func if dist_func else pair_dist
+        if self.boundary_conditions == 'closed':
+            if dist_func is None:
+                dist_func = lambda c0, c1: toric_dist(c0, c1, self.dx)
+                #Won't work for asymmetric toruses
+        elif self.boundary_conditions == 'rotated':
+            dist_func = dist_func if dist_func else pair_dist
 
         crds = self.layout.map.inv
         g = nx.Graph()
@@ -505,6 +510,15 @@ def pair_dist(crd_0, crd_1):
         return (diff_vs[0][0] + diff_vs[1][0]) / 2 # TRUST IN GOD
     else:
         raise ValueError("math don't work")
+
+def toric_dist(crd_0, crd_1, l):
+    """
+    Because of the frame rotation when switching between closed and
+    rotated BC, we have a separate distance function which takes into
+    account the minimum length path on a torus.
+    """
+    dx, dy = abs(crd_0[0] - crd_1[0]), abs(crd_0[1] - crd_1[1])
+    return (min(dx, 2 * l - dx) + min(dy, 2 * l - dy))/2 #intdiv
 
 def diag_pth(crd_0, crd_1):
     """
