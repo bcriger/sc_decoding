@@ -42,8 +42,9 @@ def insert_wm(wm, cutoff=None):
         weight_list = wm[index][:index]
         # initialise the set that we will send to blossom
         # we always include the edge to the boundary
-        weight_set = [[0, weight_list[0]]]
-
+        
+        # weight_set = [[0, weight_list[0]]]
+        weight_set = []
         # Run over list of weights, turn them into the correct format
         # and insert them into weight_set, if they are sufficiently small
         # weight. We also assume zero weights correspond to 'no edge'

@@ -3,10 +3,12 @@ from decoding_utils import blossom_path, cdef_str
 import error_model as em
 import itertools as it
 import networkx as nx
+import numpy as np
 from operator import mul
 from math import copysign
 import sparse_pauli as sp
 import progressbar as pb
+import tom.blossom_wrapper as bw
 # import matplotlib.pyplot as plt
 
 from cffi import FFI
@@ -197,14 +199,29 @@ class Sim2D(object):
 
             #----------- end of c processing
         else:
-            matching = nx.max_weight_matching(graph, maxcardinality=True)
+            # Tom MWPM
+            n_lst = sorted(graph.nodes())
+            sz = len(n_lst) + 1
+            weight_mat = np.zeros((sz, sz))
+            for r, c in it.product(range(1, sz), repeat=2):
+                if r != c:
+                    u, v = n_lst[r - 1], n_lst[c - 1]
+                    weight_mat[r, c] = - graph[u][v]['weight']
+            match_lst = bw.insert_wm(weight_mat)
+            redundant_pairs = [(n_lst[j], n_lst[k-1])
+                                for j, k in enumerate(match_lst[1:])]
 
+            """ NX MWPM
+            matching = nx.max_weight_matching(graph, maxcardinality=True)
+            redundant_pairs = matching.items()
+            """
             # get rid of non-digraph duplicates
             pairs = []
-            for tpl in matching.items():
+            for tpl in redundant_pairs:
                 if tuple(reversed(tpl)) not in pairs:
                     pairs.append(tpl)
                     # print(tpl)
+            
 
         x = self.layout.map.inv
         pauli_lst = []
