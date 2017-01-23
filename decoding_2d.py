@@ -290,11 +290,11 @@ class Sim2D(object):
             nodes = syndrome
             if dist_func is None:
                 dist_func = lambda a, b: toric_dist(a, b, self.dx)
-            
+
         # print( 'No of nodes : {0}, no of edges : {1}'.format(node_num,edge_num) )
 
         # generate nodes based on syndromes
-        
+
         # print("nodes : " , nodes)
 
         # allocate edges and matching for c blossom
