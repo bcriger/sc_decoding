@@ -1,3 +1,16 @@
+# The import syntax changes slightly between python 2 and 3, so we
+# need to detect which version is being used:
+from sys import version_info
+if version_info[0] == 3:
+    PY3 = True
+    from importlib import reload
+elif version_info[0] == 2:
+    PY3 = False
+else:
+    raise EnvironmentError("sys.version_info refers to a version of "
+        "Python neither 2 nor 3. This is not permitted. "
+        "sys.version_info = {}".format(version_info))
+
 from circuit_metric.SCLayoutClass import SCLayout, TCLayout
 from decoding_utils import blossom_path, cdef_str
 import error_model as em
@@ -7,7 +20,11 @@ from operator import mul
 from math import copysign
 import sparse_pauli as sp
 import progressbar as pb
-# import matplotlib.pyplot as plt
+
+try:
+    import matplotlib.pyplot as plt
+except RuntimeError:
+    pass #hope you don't want to draw
 
 from cffi import FFI
 
@@ -25,7 +42,7 @@ class Sim2D(object):
         """
         I set optional BC here, for now you can set 'rotated' or
         'closed'.
-        'open' might be coming in the future, but probably not. 
+        'open' might be coming in the future, but probably not.
         """
         #user-input properties
         self.dx = dx
@@ -45,7 +62,7 @@ class Sim2D(object):
                             'YI' : 0, 'YX' : 0, 'YY' : 0, 'YZ' : 0,
                             'ZI' : 0, 'ZX' : 0, 'ZY' : 0, 'ZZ' : 0
                         }
-        
+
         self.error_model = em.PauliErrorModel([(1. - p)**2, p * (1. - p), p * (1. - p), p**2],
             [[self.layout.map[_]] for _ in self.layout.datas])
 
@@ -137,7 +154,7 @@ class Sim2D(object):
                 for v1, v2 in
                 it.combinations(syndrome, 2)
                 )
-    
+
         return g
 
     def correction(self, graph, err):
@@ -256,23 +273,26 @@ class Sim2D(object):
 
         # create node mapping
         node2id = { val: index for index, val in enumerate(nodes) }
-        id2node = {v: k for k, v in node2id.iteritems()}
+        if PY3:
+            id2node = {v: k for k, v in node2id.items()}
+        else:
+            id2node = {v: k for k, v in node2id.iteritems()}
 
         # generate edges
         e = 0
         for v1, v2 in it.combinations(syndrome, 2):
             uid = int(node2id[v1])
             vid = int(node2id[v2])
-            
+
             if dist_func:
                 wt = dist_func(crds[v1], crds[v2])
             else:
                 wt = pair_dist(crds[v1], crds[v2])
-            
-            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
+
+            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = int(wt)
             e += 1
 
-        if self.boundary_conditions == 'rotated': 
+        if self.boundary_conditions == 'rotated':
             close_pts = {}
             for s in syndrome:
                 v1 = s
@@ -285,9 +305,9 @@ class Sim2D(object):
                     wt = dist_func(crds[s], close_pt)
                 else:
                     wt = self.bdy_info(crds[s])[0]
-                
+
                 close_pts[(v1,v2)] = close_pt
-                edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
+                edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = int(wt)
                 e += 1
 
             for u, v in it.combinations(syndrome, 2):
@@ -350,22 +370,22 @@ class Sim2D(object):
             com_tpl = x_bar.com(loop), z_bar.com(loop)
         elif self.boundary_conditions == 'closed':
             anticom_dict = {
-                            (0, 0, 0, 0) : 'II', 
-                            (0, 0, 0, 1) : 'IX', 
-                            (0, 0, 1, 0) : 'XI', 
-                            (0, 0, 1, 1) : 'XX', 
-                            (0, 1, 0, 0) : 'IZ', 
-                            (0, 1, 0, 1) : 'IY', 
-                            (0, 1, 1, 0) : 'XZ', 
-                            (0, 1, 1, 1) : 'XY',  
-                            (1, 0, 0, 0) : 'ZI', 
-                            (1, 0, 0, 1) : 'ZX', 
-                            (1, 0, 1, 0) : 'YI', 
-                            (1, 0, 1, 1) : 'YX', 
-                            (1, 1, 0, 0) : 'ZZ', 
-                            (1, 1, 0, 1) : 'ZY', 
-                            (1, 1, 1, 0) : 'YZ', 
-                            (1, 1, 1, 1) : 'YY' 
+                            (0, 0, 0, 0) : 'II',
+                            (0, 0, 0, 1) : 'IX',
+                            (0, 0, 1, 0) : 'XI',
+                            (0, 0, 1, 1) : 'XX',
+                            (0, 1, 0, 0) : 'IZ',
+                            (0, 1, 0, 1) : 'IY',
+                            (0, 1, 1, 0) : 'XZ',
+                            (0, 1, 1, 1) : 'XY',
+                            (1, 0, 0, 0) : 'ZI',
+                            (1, 0, 0, 1) : 'ZX',
+                            (1, 0, 1, 0) : 'YI',
+                            (1, 0, 1, 1) : 'YX',
+                            (1, 1, 0, 0) : 'ZZ',
+                            (1, 1, 0, 1) : 'ZY',
+                            (1, 1, 1, 0) : 'YZ',
+                            (1, 1, 1, 1) : 'YY'
                         }
 
             logs = self.layout.logicals()
@@ -435,7 +455,7 @@ class Sim2D(object):
             if new_dist < min_dist:
                 min_dist, close_pt = new_dist, pt
 
-        return min_dist, close_pt 
+        return min_dist, close_pt
 
     def path_pauli(self, crd_0, crd_1, err_type):
         """
@@ -475,8 +495,8 @@ product = lambda itrbl: reduce(mul, itrbl, sp.Pauli())
 
 def short_seq(a, b, l):
     """
-    I'm trying to figure out whether 'tis nobler to step from a to b 
-    around one direction on a torus l squares wide, or whether to go 
+    I'm trying to figure out whether 'tis nobler to step from a to b
+    around one direction on a torus l squares wide, or whether to go
     the other way.
     """
     d = abs(b - a)
