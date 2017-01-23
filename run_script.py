@@ -7,6 +7,7 @@ import matched_weights as mw
 import numpy as np
 import pickle as pkl
 from scipy.linalg import block_diag
+from scipy.special import binom
 
 SHIFTS = [(2, 2), (2, -2), (-2, 2), (-2, -2)]
 
@@ -23,6 +24,30 @@ def fancy_dist(d, p):
     
     def dist_func(crd0, crd1):
         return mat[crds.index(crd0), crds.index(crd1)]
+
+    return dist_func
+
+def entropic_dist(l, p):
+    """
+    I'm going to add a term to the toric distance to try to account
+    for degeneracy in the minimum-weight paths.
+    To a very crude first approximation, the probability of a
+    minimum-length path between two syndromes will just be multiplied
+    by the number of chains of that length. 
+    Then, instead of |C| as the edge weight, we obtain
+    |C| + ln(num_chains) / ln(p / (1 - p)).
+    Note that, for now, I'm going to constrain the matching to use only
+    minimum-length paths, even if the entropic term would make a longer
+    path likelier.
+    """
+    def dist_func(crd_0, crd_1):
+        dx = abs(crd_0[0] - crd_1[0]) / 2  #intdiv
+        dy = abs(crd_0[1] - crd_1[1]) / 2  #intdiv
+        delta_x = min(dx, l - dx)
+        delta_y = min(dy, l - dy)
+        nc = binom(delta_x + delta_y, delta_x)
+        entropic_correction = np.log(nc) / np.log(p / (1. - p))
+        return delta_x + delta_y + entropic_correction
 
     return dist_func
 
@@ -44,8 +69,8 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
             if sim_type in ['iidxz', 'dep']:
                 # dist_func = fancy_dist(dist, err)
                 # current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
-                dist_func = None
-                current_sim = dc2.Sim2D(dist, dist, err, useBlossom=True, boundary_conditions=bc)
+                dist_func = entropic_dist(dist, err)
+                current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
             elif sim_type == 'circ':
