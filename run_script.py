@@ -26,7 +26,7 @@ def fancy_dist(d, p):
 
     return dist_func
 
-def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz'):
+def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz', bc='rotated'):
     """
     Makes a bunch of simulation objects and runs them, based on input
     parameters. 
@@ -43,9 +43,9 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz')
         for err in errs:
             if sim_type in ['iidxz', 'dep']:
                 # dist_func = fancy_dist(dist, err)
-                # current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False)
+                # current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
                 dist_func = None
-                current_sim = dc2.Sim2D(dist, dist, err, useBlossom=True)
+                current_sim = dc2.Sim2D(dist, dist, err, useBlossom=True, boundary_conditions=bc)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
             elif sim_type == 'circ':
@@ -157,7 +157,8 @@ if __name__ == '__main__':
     n_trials = int(argv[5])
     flnm = argv[6]
     sim_type = argv[7] if len(argv) > 7 else 'iidxz'
-    run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type)
+    bc = 'closed'
+    run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type, bc)
     # run_corr_dep(err_lo, err_hi, n_points, dists, n_trials, flnm)
 
 #---------------------------------------------------------------------#
