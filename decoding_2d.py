@@ -274,20 +274,27 @@ class Sim2D(object):
         crds = self.layout.map.inv
 
         # calculate number of nodes and edges
-        node_num = 2 * len(syndrome)
-        edge_num = len(syndrome)
-        for v1, v2 in it.combinations(syndrome, 2):
-            edge_num = edge_num + 2; #TODO replace loop with n*(n-1)
-
+        if self.boundary_conditions == 'rotated':
+            node_num = 2 * len(syndrome)
+            edge_num = len(syndrome)
+            for v1, v2 in it.combinations(syndrome, 2):
+                edge_num = edge_num + 2; #TODO replace loop with n*(n-1)
+            nodes = []
+            for s in syndrome:
+                n = str(s) + ', b'
+                nodes.append(s)
+                nodes.append(n)
+        elif self.boundary_conditions == 'closed':
+            node_num = len(syndrome)
+            edge_num = (node_num * (node_num - 1))/2
+            nodes = syndrome
+            if dist_func is None:
+                dist_func = lambda a, b: toric_dist(a, b, self.dx)
+            
         # print( 'No of nodes : {0}, no of edges : {1}'.format(node_num,edge_num) )
 
         # generate nodes based on syndromes
-        nodes = []
-        for s in syndrome:
-            n = str(s) + ', b'
-            nodes.append(s)
-            nodes.append(n)
-
+        
         # print("nodes : " , nodes)
 
         # allocate edges and matching for c blossom
@@ -313,6 +320,7 @@ class Sim2D(object):
                 wt = pair_dist(crds[v1], crds[v2])
 
             edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = int(wt)
+
             e += 1
 
         if self.boundary_conditions == 'rotated':
