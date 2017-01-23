@@ -12,7 +12,21 @@ avoided by putting in a weight matrix with a disconnected first vertex. However,
 I never check for a single ***
 '''
 
-import blossom as Bloss
+from sys import version_info
+if version_info[0] == 3:
+    PY3 = True
+    from importlib import reload
+elif version_info[0] == 2:
+    PY3 = False
+else:
+    raise EnvironmentError("sys.version_info refers to a version of "
+        "Python neither 2 nor 3. This is not permitted. "
+        "sys.version_info = {}".format(version_info))
+
+if PY3:
+    from . import blossom as Bloss
+else:
+    import blossom as Bloss
 
 def insert_wm(wm, cutoff=None):
     '''
@@ -42,7 +56,7 @@ def insert_wm(wm, cutoff=None):
         weight_list = wm[index][:index]
         # initialise the set that we will send to blossom
         # we always include the edge to the boundary
-        
+
         # weight_set = [[0, weight_list[0]]]
         weight_set = []
         # Run over list of weights, turn them into the correct format
