@@ -33,7 +33,7 @@ def insert_wm(wm, cutoff=None):
 
     num_vertices = wm.shape[0]
 
-    b = Bloss.Bloss(max_vertices=num_vertices+100, vertex_buffer=20)
+    b = Bloss.Bloss(max_vertices=num_vertices+200, vertex_buffer=20)
 
     # Run over weight matrix
     for index in range(1, len(wm)):
@@ -58,6 +58,6 @@ def insert_wm(wm, cutoff=None):
         # Insert into blossom
         b.add_vertex(weight_set)
 
-    pairing = b.finish_safe()
+    pairing = b.finish()
 
     return pairing
