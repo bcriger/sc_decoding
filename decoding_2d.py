@@ -16,6 +16,7 @@ from decoding_utils import blossom_path, cdef_str
 import error_model as em
 import itertools as it
 import networkx as nx
+import numpy as np
 from operator import mul
 from math import copysign
 import sparse_pauli as sp
@@ -25,6 +26,8 @@ try:
     import matplotlib.pyplot as plt
 except RuntimeError:
     pass #hope you don't want to draw
+
+import tom.blossom_wrapper as bw
 
 from cffi import FFI
 
@@ -129,7 +132,12 @@ class Sim2D(object):
         NetworkX does). We use negative edge weights to make this
         happen.
         """
-        dist_func = dist_func if dist_func else pair_dist
+        if self.boundary_conditions == 'closed':
+            if dist_func is None:
+                dist_func = lambda c0, c1: toric_dist(c0, c1, self.dx)
+                #Won't work for asymmetric toruses
+        elif self.boundary_conditions == 'rotated':
+            dist_func = dist_func if dist_func else pair_dist
 
         crds = self.layout.map.inv
         g = nx.Graph()
@@ -209,14 +217,29 @@ class Sim2D(object):
 
             #----------- end of c processing
         else:
-            matching = nx.max_weight_matching(graph, maxcardinality=True)
+            # Tom MWPM
+            n_lst = sorted(graph.nodes())
+            sz = len(n_lst) + 1
+            weight_mat = np.zeros((sz, sz))
+            for r, c in it.product(range(1, sz), repeat=2):
+                if r != c:
+                    u, v = n_lst[r - 1], n_lst[c - 1]
+                    weight_mat[r, c] = - graph[u][v]['weight']
+            match_lst = bw.insert_wm(weight_mat)
+            redundant_pairs = [(n_lst[j], n_lst[k-1])
+                                for j, k in enumerate(match_lst[1:])]
 
+            """ NX MWPM
+            matching = nx.max_weight_matching(graph, maxcardinality=True)
+            redundant_pairs = matching.items()
+            """
             # get rid of non-digraph duplicates
             pairs = []
-            for tpl in matching.items():
+            for tpl in redundant_pairs:
                 if tuple(reversed(tpl)) not in pairs:
                     pairs.append(tpl)
                     # print(tpl)
+
 
         x = self.layout.map.inv
         pauli_lst = []
@@ -525,6 +548,15 @@ def pair_dist(crd_0, crd_1):
         return (diff_vs[0][0] + diff_vs[1][0]) / 2 # TRUST IN GOD
     else:
         raise ValueError("math don't work")
+
+def toric_dist(crd_0, crd_1, l):
+    """
+    Because of the frame rotation when switching between closed and
+    rotated BC, we have a separate distance function which takes into
+    account the minimum length path on a torus.
+    """
+    dx, dy = abs(crd_0[0] - crd_1[0]), abs(crd_0[1] - crd_1[1])
+    return (min(dx, 2 * l - dx) + min(dy, 2 * l - dy))/2 #intdiv
 
 def diag_pth(crd_0, crd_1):
     """
