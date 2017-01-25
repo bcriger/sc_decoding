@@ -27,7 +27,7 @@ def fancy_dist(d, p):
 
     return dist_func
 
-def entropic_dist(l, p):
+def entropic_dist(l, p, precision=2):
     """
     I'm going to add a term to the toric distance to try to account
     for degeneracy in the minimum-weight paths.
@@ -39,15 +39,20 @@ def entropic_dist(l, p):
     Note that, for now, I'm going to constrain the matching to use only
     minimum-length paths, even if the entropic term would make a longer
     path likelier.
+
+    To make this function return an integer, I multiply the weight by
+    10**precision and cast to integer.
     """
+    log_odds = np.log(p / (1. - p))
     def dist_func(crd_0, crd_1):
         dx = abs(crd_0[0] - crd_1[0]) / 2  #intdiv
         dy = abs(crd_0[1] - crd_1[1]) / 2  #intdiv
         delta_x = min(dx, l - dx)
         delta_y = min(dy, l - dy)
         nc = binom(delta_x + delta_y, delta_x)
-        entropic_correction = np.log(nc) / np.log(p / (1. - p))
-        return delta_x + delta_y + entropic_correction
+        entropic_correction = np.log(nc) / log_odds
+        float_weight =  delta_x + delta_y + entropic_correction
+        return int(float_weight * 10 ** precision)
 
     return dist_func
 
@@ -70,7 +75,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                 # dist_func = fancy_dist(dist, err)
                 # current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
                 dist_func = entropic_dist(dist, err)
-                current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
+                current_sim = dc2.Sim2D(dist, dist, err, useBlossom=True, boundary_conditions=bc)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
             elif sim_type == 'circ':

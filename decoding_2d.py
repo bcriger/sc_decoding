@@ -4,8 +4,10 @@ from sys import version_info
 if version_info[0] == 3:
     PY3 = True
     from importlib import reload
+    import pickle as pkl
 elif version_info[0] == 2:
     PY3 = False
+    import cPickle as pkl
 else:
     raise EnvironmentError("sys.version_info refers to a version of "
         "Python neither 2 nor 3. This is not permitted. "
@@ -218,6 +220,7 @@ class Sim2D(object):
             #----------- end of c processing
         else:
             # Tom MWPM
+            # """
             n_lst = sorted(graph.nodes())
             sz = len(n_lst) + 1
             weight_mat = np.zeros((sz, sz))
@@ -225,10 +228,17 @@ class Sim2D(object):
                 if r != c:
                     u, v = n_lst[r - 1], n_lst[c - 1]
                     weight_mat[r, c] = - graph[u][v]['weight']
-            match_lst = bw.insert_wm(weight_mat)
+            try:
+                match_lst = bw.insert_wm(weight_mat)
+            except:
+                with open('error_wts.pkl', 'w') as phil:
+                    pkl.dump(weight_mat, phil)
+                raise ValueError("Tom's Blossom has gone wrong: "
+                                    "weight_mat saved to error_wts.pkl.")
             redundant_pairs = [(n_lst[j], n_lst[k-1])
                                 for j, k in enumerate(match_lst[1:])]
 
+            # """
             """ NX MWPM
             matching = nx.max_weight_matching(graph, maxcardinality=True)
             redundant_pairs = matching.items()
