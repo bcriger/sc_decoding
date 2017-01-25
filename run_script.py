@@ -11,7 +11,7 @@ from scipy.special import binom
 
 SHIFTS = [(2, 2), (2, -2), (-2, 2), (-2, -2)]
 
-def fancy_dist(d, p):
+def fancy_dist(d, p, precision=2):
     """
     Turns the nice list/matrix description output by 
     circuit_metric.bit_flip_metric into a function with co-ordinates as
@@ -20,7 +20,7 @@ def fancy_dist(d, p):
     z_crds, z_mat = cm.bit_flip_metric(d, p, 'z')
     x_crds, x_mat = cm.bit_flip_metric(d, p, 'x')
     crds = x_crds + z_crds
-    mat = block_diag(x_mat, z_mat)
+    mat = (10**precision * block_diag(x_mat, z_mat)).astype(np.int_)
     
     def dist_func(crd0, crd1):
         return mat[crds.index(crd0), crds.index(crd1)]
@@ -72,9 +72,8 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
         failures = []
         for err in errs:
             if sim_type in ['iidxz', 'dep']:
-                # dist_func = fancy_dist(dist, err)
                 # current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
-                dist_func = entropic_dist(dist, err)
+                dist_func = fancy_dist(dist, err)
                 current_sim = dc2.Sim2D(dist, dist, err, useBlossom=True, boundary_conditions=bc)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
@@ -86,6 +85,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                     [[current_sim.layout.map[_]] for _ in current_sim.layout.datas])
                 dist_func = fancy_dist(dist, 0.66666667 * err)
 
+            # current_sim.run(n_trials, progress=False, dist_func=None)
             current_sim.run(n_trials, progress=False, dist_func=dist_func)
             failures.append(current_sim.errors)
         output_dict.update({'failures ' + str(dist) : failures})
