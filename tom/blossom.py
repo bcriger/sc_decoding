@@ -13,21 +13,20 @@ Supports adding single vertices at a time, and memory management.
 A wrapper has been added to insert an entire weight matrix at once,
 which is in the tests folder of the quantumerrorcorrection package.
 """
-from __future__ import division
+#Python 2.7 import
+#from __future__ import division
 import numpy as np
 from collections import deque
-
-from sys import version_info as v
-if v[0] == 2: 
-    import Queue as queue
-else:
-    import queue
+# Python 2.7 import
+#import Queue as queue
+# Python 3 import
+import queue
 
 
 class Bloss:
 
     # INITIALISATION ###
-    def __init__(self, tbw=1e10, max_vertices=10000, vertex_buffer=0):
+    def __init__(self, tbw, max_vertices, vertex_buffer):
         """
         Initializing graph with only boundary term.
 
@@ -484,7 +483,7 @@ class Bloss:
                 raise ValueError('Instruction not understood.')
 
 
-    def finish_safe(self, boundary_list=None, weight_lists=[], c_flag=False):
+    def finish_safe(self, boundary_list=None, weight_lists = [], c_flag=False):
         '''
         Runs the finishing function in a safe manner, so that the
         debug data is definitely output if an error occurs.
@@ -1587,6 +1586,8 @@ class Bloss:
         # Update the tree branch list
         if self.tree_branch_list[cycle[0]]:  # Unless the cycle is the new root.
             self.tree_branch_list[nbi] = list(self.tree_branch_list[cycle[0]])  # Copy it
+        else:
+            self.tree_branch_list[nbi] = []
         # The edges for the other nodes in the tree are still the same
         # but their ends have changed, and we're currently storing these
         # separately.
