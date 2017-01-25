@@ -11,14 +11,14 @@ from scipy.special import binom
 
 SHIFTS = [(2, 2), (2, -2), (-2, 2), (-2, -2)]
 
-def fancy_dist(d, p, precision=2):
+def fancy_dist(d, p, precision=2, bc='rotated'):
     """
     Turns the nice list/matrix description output by 
     circuit_metric.bit_flip_metric into a function with co-ordinates as
     arguments.
     """
-    z_crds, z_mat = cm.bit_flip_metric(d, p, 'z')
-    x_crds, x_mat = cm.bit_flip_metric(d, p, 'x')
+    z_crds, z_mat = cm.bit_flip_metric(d, p, 'z', bc)
+    x_crds, x_mat = cm.bit_flip_metric(d, p, 'x', bc)
     crds = x_crds + z_crds
     mat = (10**precision * block_diag(x_mat, z_mat)).astype(np.int_)
     
@@ -73,7 +73,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
         for err in errs:
             if sim_type in ['iidxz', 'dep']:
                 # current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
-                dist_func = fancy_dist(dist, err)
+                dist_func = fancy_dist(dist, err, bc=bc)
                 current_sim = dc2.Sim2D(dist, dist, err, useBlossom=True, boundary_conditions=bc)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
