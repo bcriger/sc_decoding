@@ -17,8 +17,8 @@ def fancy_dist(d, p, precision=2, bc='rotated'):
     circuit_metric.bit_flip_metric into a function with co-ordinates as
     arguments.
     """
-    z_crds, z_mat = cm.bit_flip_metric(d, p, 'z', bc)
-    x_crds, x_mat = cm.bit_flip_metric(d, p, 'x', bc)
+    z_crds, z_mat = cm.bit_flip_metric(d, p, 'z', bc, True, d)
+    x_crds, x_mat = cm.bit_flip_metric(d, p, 'x', bc, True, d)
     crds = x_crds + z_crds
     mat = (10**precision * block_diag(x_mat, z_mat)).astype(np.int_)
     
@@ -27,7 +27,7 @@ def fancy_dist(d, p, precision=2, bc='rotated'):
 
     return dist_func
 
-def entropic_dist(l, p, precision=2):
+def entropic_dist(l, p, precision=4):
     """
     I'm going to add a term to the toric distance to try to account
     for degeneracy in the minimum-weight paths.
@@ -43,15 +43,18 @@ def entropic_dist(l, p, precision=2):
     To make this function return an integer, I multiply the weight by
     10**precision and cast to integer.
     """
-    log_odds = np.log(p / (1. - p))
+    odds = p / (1. - p)
+    log_odds = np.log(odds)
     def dist_func(crd_0, crd_1):
         dx = abs(crd_0[0] - crd_1[0]) / 2  #intdiv
         dy = abs(crd_0[1] - crd_1[1]) / 2  #intdiv
-        delta_x = min(dx, l - dx)
-        delta_y = min(dy, l - dy)
-        nc = binom(delta_x + delta_y, delta_x)
+        dx = min(dx, l - dx) #uh-hahahahaha
+        dy = min(dy, l - dy) #uh-hahahahaha
+        nc = binom(dx + dy, dx)
+        omega_ratio = float(dx * (dx + 1)**2 + dy * (dy + 1)**2) / float((dx + 1) * (dy + 1))
         entropic_correction = np.log(nc) / log_odds
-        float_weight =  delta_x + delta_y + entropic_correction
+        second_correction = np.log(1. + omega_ratio * odds ** 2)
+        float_weight =  dx + dy + entropic_correction + second_correction
         return int(float_weight * 10 ** precision)
 
     return dist_func
@@ -73,7 +76,8 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
         for err in errs:
             if sim_type in ['iidxz', 'dep']:
                 # current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
-                dist_func = fancy_dist(dist, err, bc=bc)
+                # dist_func = fancy_dist(dist, err, bc=bc)
+                dist_func = entropic_dist(dist, err)
                 current_sim = dc2.Sim2D(dist, dist, err, useBlossom=True, boundary_conditions=bc)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
@@ -85,8 +89,8 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                     [[current_sim.layout.map[_]] for _ in current_sim.layout.datas])
                 dist_func = fancy_dist(dist, 0.66666667 * err)
 
-            current_sim.run(n_trials, progress=False, dist_func=None)
-            # current_sim.run(n_trials, progress=False, dist_func=dist_func)
+            # current_sim.run(n_trials, progress=False, dist_func=None)
+            current_sim.run(n_trials, progress=False, dist_func=dist_func)
             failures.append(current_sim.errors)
         output_dict.update({'failures ' + str(dist) : failures})
 
