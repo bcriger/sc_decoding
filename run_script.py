@@ -53,7 +53,7 @@ def entropic_dist(l, p, precision=4):
         nc = binom(dx + dy, dx)
         omega_ratio = float(dx * (dx + 1)**2 + dy * (dy + 1)**2) / float((dx + 1) * (dy + 1))
         entropic_correction = np.log(nc) / log_odds
-        second_correction = np.log(1. + omega_ratio * odds ** 2)
+        second_correction = np.log(1. + omega_ratio * odds ** 2) / log_odds
         float_weight =  dx + dy + entropic_correction + second_correction
         return int(float_weight * 10 ** precision)
 
