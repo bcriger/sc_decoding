@@ -89,8 +89,8 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                     [[current_sim.layout.map[_]] for _ in current_sim.layout.datas])
                 dist_func = fancy_dist(dist, 0.66666667 * err)
 
-            # current_sim.run(n_trials, progress=False, dist_func=None)
-            current_sim.run(n_trials, progress=False, dist_func=dist_func)
+            current_sim.run(n_trials, progress=False)
+            # current_sim.run(n_trials, progress=False, dist_func=dist_func)
             failures.append(current_sim.errors)
         output_dict.update({'failures ' + str(dist) : failures})
 
