@@ -1,0 +1,57 @@
+Independent X and Z errors
+We only consider the X errors that were introduced
+
+d = 3
+Input = 16 
+    1 perfect - 3 faulty - 1 perfect SC cycles
+    4 Z-ancilla (flips_Z) @ 5 SC cycles -> error syndrome = 20 bits -> 16 flips (detection events)
+Output = 2
+    Logical 'I' and logical 'X'
+
+data + measurement errors
+1. run d faulty SC cycles and one perfect round at the end
+2. get error syndromes for each round
+3. create and store the flips for both X and Z ancillas for all rounds
+4. provide the flips between the rounds as input to the NN (3*8=24 nodes at input)
+5. sum the number of X and Z errors after all rounds and calculate this number mod 2
+6. check the logical state of the logical qubit based on the parity calculation
+sum(X_err) mod 2 = 0 or 1
+sum(Z_err) mod 2 = 0 or 1
+Based on these parity calculations the output of the NN results in I, X, Y, Z
+7. the output of the NN is the logical error after the perfect round (4 nodes)
+8. the corrections at the end of the window will be calculated as:
+    send the measurement values of the ancilla at every SC cycle to the dumb decoder
+    store the results of the dumb decoder (dumb corrections) at every round
+    at the end of all SC cycles (perf + faulty + perf), we take all stored corrections and multiply them together
+    the result of this multiplication is the corrections at the end of the window, which will be used
+    to investigate whether a logical error has occurred    
+    
+Sampling
+Run decoding_3d method called history() which runs the 5 SC cycles as a block
+
+The sampling occurred with the 'pq' error model (independent X and Z errors)
+with probability of data qubit error being 0.04 and probability of measurement
+error being 0.04 as well. The reason for selecting these probabilities is that
+they produce a logical error for blossom of 25%. 25% was selected because it is 
+in the middle of 0 and 50% (arbitrary theoretical decision). 
+At 50% any optimal decoder takes random decisions, so we need to avoid that. 
+We need to train in a physical error rate where an optimal decoder would provide
+the correct answer more times that the wrong answer. Therefore the objective 
+function will be correct. So when the NN will fit this objective function, 
+it will be trained on the correct data.
+
+Gather the data for training (1.000.000 SC cycles produced 12211 unique cases)
+
+Training
+Train on the 12211 unique cases
+
+Predicting
+At first the decoding will be done as block decoding. This means that we run the 5
+SC cycles and check for a logical error (calculate the LER).
+After these initial results we will do the decoding as a sliding window during runtime. 
+This means that we will run only the (3) fault SC cycles and propagate any remaining errors
+after the corrections at the end of the third faulty round to the next window of 3
+faulty SC cycles. With the sliding window approach we expect a small dip in the performance 
+of the decoder however it should still be similar to Blossom's.
+Block decoding with more than d faulty SC cycles will also be investigated for higher 
+performance.
