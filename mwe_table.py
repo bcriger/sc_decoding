@@ -10,6 +10,7 @@ import itertools as it
 import decoding_2d as dc2
 from operator import mul
 from stabiliser_sampling import powerset
+import progressbar as pb
 
 def mwe(sim, syndromes, stabs, logs):
     """
@@ -41,7 +42,8 @@ def main(sim):
     stabs = [d.values() for d in stabs.values()][0] + [d.values() for d in stabs.values()][1]
     logs = sim.layout.logicals()
     table = dict()
-    for synds in it.product(x_combos, z_combos):
+    bar = pb.ProgressBar()
+    for synds in bar(list(it.product(x_combos, z_combos))):
         table[synds] = mwe(sim, synds, stabs, logs)
     return table
 

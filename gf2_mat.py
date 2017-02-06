@@ -1,4 +1,7 @@
 from numpy import int_, shape, zeros
+"""
+Copy-paste from Scheinerman's SimpleGF2.jl
+"""
 
 def swap_rows(mat, r0, r1):
     temp_row = mat[r0,:].copy()
@@ -20,11 +23,11 @@ def rref(mat):
     s = 0
     for x in range(r):
         b = False
-        while not(b) and (x + s <= c):
+        while not(b) and (x + s < c):
             if mat[x, x + s] == 1:
                 break
             elif mat[x, x + s] == 0:
-                for y in range(x,r):
+                for y in range(x, r):
                     if mat[y, x + s] == 1:
                         swap_rows(mat, y, x)
                         b = True
@@ -32,7 +35,7 @@ def rref(mat):
             if not(b):
                 s = s + 1
         for m in range(r):
-            if all((x + s <= c, m != x, mat[m, x+s] == 1)):
+            if (x + s < c) and all((m != x, mat[m, x + s] == 1)):
                 add_row_to_row(mat, x, m)
     pass # subroutine can't be beat
 
