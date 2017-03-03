@@ -1,6 +1,6 @@
 import numpy as np
-import sparse_pauli as sp
 from operator import mul
+import sparse_pauli as sp
 
 from sys import version_info
 if version_info.major == 3:
@@ -63,6 +63,9 @@ class PauliErrorModel(object):
 
         self.p_arr = p_arr
         self.q_lsts = q_lsts
+        
+        self.n_ps = len(p_arr)
+        self.n_lsts = len(q_lsts)
 
     def sample(self):
         """

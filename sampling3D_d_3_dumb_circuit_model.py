@@ -30,7 +30,8 @@ sim_test = dc3.Sim3D(d, ms_rnd, ('fowler', p), True)
 
 #for cycl in range(1000000):
 cycl = 0
-while no_samples < 1000000:
+sample_total = 10**4 # 10**6
+while no_samples < sample_total:
     err, synd = sim_test.history(True)
     rnd_err_x = err[-1].x_set
     rnd_err_z = err[-1].z_set
@@ -42,7 +43,7 @@ while no_samples < 1000000:
     dumb_log_err = sim_test2d.logical_error(rd_er, dumb_x_corr, dumb_z_corr)
     
     #for j in range(d+1):
-    for j in range(ms_rnd+1):
+    for j in range(ms_rnd):
         for i in range(no_anc):
             if (z_ancs[i] in synd['Z'][j] and z_ancs[i] in synd['Z'][j+1]) or \
                (z_ancs[i] not in synd['Z'][j] and z_ancs[i] not in synd['Z'][j+1]):
@@ -51,7 +52,7 @@ while no_samples < 1000000:
                 flips_Z[j][i] = 1
     
     #for j in range(d+1):
-    for j in range(ms_rnd+1):
+    for j in range(ms_rnd):
         for i in range(no_anc):
             if (x_ancs[i] in synd['X'][j] and x_ancs[i] in synd['X'][j+1]) or \
                (x_ancs[i] not in synd['X'][j] and x_ancs[i] not in synd['X'][j+1]):
@@ -61,12 +62,12 @@ while no_samples < 1000000:
     
     s = ''
     #for j in range(d+1):
-    for j in range(ms_rnd+1):
+    for j in range(ms_rnd):
         for k in range(no_anc):
             s += str(flips_Z[j][k])
     
     #for j in range(d+1):
-    for j in range(ms_rnd+1):
+    for j in range(ms_rnd):
         for k in range(no_anc):
             s += str(flips_X[j][k])
     
@@ -103,7 +104,7 @@ print(no_samples)
 sorted_samples = sorted(samples.items(), key=lambda e: e[1][4], reverse=True)
 with open('d='+str(d)+'_p='+str(p)+'_'+str(len(samples))+'_samples_20_rounds.txt', 'w') as f:
     #pl = 2 * (d+1) * no_anc
-    pl = 2 * (ms_rnd+1) * no_anc
+    pl = 2 * (ms_rnd) * no_anc
     for key, value in sorted_samples:
         x = ''
         for i in range(pl):

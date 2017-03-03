@@ -57,7 +57,7 @@ class Sim2D(object):
 
         #derived properties
         if boundary_conditions == 'rotated':
-            self.layout = SCLayout(dx) #TODO dy
+            self.layout = SCLayout(dx, dy)
             self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
         elif boundary_conditions == 'closed':
             self.layout = TCLayout(dx) #TODO dy
