@@ -13,7 +13,7 @@ else:
         "Python neither 2 nor 3. This is not permitted. "
         "sys.version_info = {}".format(version_info))
 
-from circuit_metric.SCLayoutClass import SCLayout, TCLayout
+from circuit_metric.SCLayoutClass import SCLayout, TCLayout, PCLayout
 from decoding_utils import blossom_path, cdef_str
 import error_model as em
 import itertools as it
@@ -56,7 +56,10 @@ class Sim2D(object):
         self.boundary_conditions = boundary_conditions
 
         #derived properties
-        if boundary_conditions == 'rotated':
+        if boundary_conditions == 'open':
+            self.layout = PCLayout(dx, dy)
+            self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
+        elif boundary_conditions  == 'rotated':
             self.layout = SCLayout(dx, dy)
             self.errors = {'I' : 0, 'X' : 0, 'Y' : 0, 'Z' : 0}
         elif boundary_conditions == 'closed':
@@ -134,9 +137,10 @@ class Sim2D(object):
         NetworkX does). We use negative edge weights to make this
         happen.
         """
-        if self.boundary_conditions == 'closed':
+        if self.boundary_conditions in ['closed', 'open']:
+            l = None if self.boundary_conditions == 'open' else self.dx
             if dist_func is None:
-                dist_func = lambda c0, c1: toric_dist(c0, c1, self.dx)
+                dist_func = lambda c0, c1: toric_dist(c0, c1, l)
                 #Won't work for asymmetric toruses
         elif self.boundary_conditions == 'rotated':
             dist_func = dist_func if dist_func else pair_dist
@@ -150,7 +154,7 @@ class Sim2D(object):
             (v1, v2, -dist_func(crds[v1], crds[v2]))
             for v1, v2 in it.combinations(syndrome, 2) )
 
-        if self.boundary_conditions == 'rotated':
+        if self.boundary_conditions in ['rotated', 'open']:
             #boundary vertices, edges from boundary distance
             for s in syndrome:
                 b_info = self.bdy_info(crds[s])
@@ -220,14 +224,15 @@ class Sim2D(object):
             #----------- end of c processing
         else:
             # Tom MWPM
-            # """
+            """
             n_lst = sorted(graph.nodes())
             sz = len(n_lst) + 1
             weight_mat = np.zeros((sz, sz))
             for r, c in it.product(range(1, sz), repeat=2):
                 if r != c:
                     u, v = n_lst[r - 1], n_lst[c - 1]
-                    weight_mat[r, c] = - graph[u][v]['weight']
+                    if graph.has_edge(u, v):
+                        weight_mat[r, c] = -graph[u][v]['weight']
             try:
                 match_lst = bw.insert_wm(weight_mat)
             except:
@@ -238,11 +243,11 @@ class Sim2D(object):
             redundant_pairs = [(n_lst[j], n_lst[k-1])
                                 for j, k in enumerate(match_lst[1:])]
 
-            # """
-            """ NX MWPM
+            """
+            # """ NX MWPM
             matching = nx.max_weight_matching(graph, maxcardinality=True)
             redundant_pairs = matching.items()
-            """
+            # """
             # get rid of non-digraph duplicates
             pairs = []
             for tpl in redundant_pairs:
@@ -284,7 +289,7 @@ class Sim2D(object):
         crds = self.layout.map.inv
 
         # calculate number of nodes and edges
-        if self.boundary_conditions == 'rotated':
+        if self.boundary_conditions in ['rotated', 'open']:
             node_num = 2 * len(syndrome)
             edge_num = len(syndrome)
             for v1, v2 in it.combinations(syndrome, 2):
@@ -400,7 +405,7 @@ class Sim2D(object):
         """
         loop = error * x_corr * z_corr
 
-        if self.boundary_conditions == 'rotated':
+        if self.boundary_conditions in ['rotated', 'open']:
             anticom_dict = {
                             ( 0, 0 ) : 'I',
                             ( 0, 1 ) : 'X',
@@ -486,13 +491,18 @@ class Sim2D(object):
         one of the acceptable boundary vertices, depending on
         syndrome type (X or Z).
         """
-        if self.boundary_conditions=='closed':
+        if self.boundary_conditions == 'closed':
             return None, None
 
+        if self.boundary_conditions == 'open':
+            dist_func = lambda c0, c1: toric_dist(c0, c1, None)
+        elif self.boundary_conditions == 'rotated':
+            dist_func = pair_dist
+        
         min_dist = 4 * max(self.dx, self.dy) #any impossibly large value will do
         err_type = 'Z' if crd in self.layout.x_ancs() else 'X'
         for pt in self.layout.boundary_points(err_type):
-            new_dist = pair_dist(crd, pt)
+            new_dist = dist_func(crd, pt)
             if new_dist < min_dist:
                 min_dist, close_pt = new_dist, pt
 
@@ -510,6 +520,15 @@ class Sim2D(object):
         this corner.
         """
         err_type = err_type.upper()
+        if self.boundary_conditions == 'open':
+            pth_0 = [
+                        (x, crd_0[1])
+                        for x in short_seq(crd_0[0], crd_1[0], None)
+                    ]
+            pth_1 = [
+                        (crd_1[0], y)
+                        for y in short_seq(crd_0[1], crd_1[1], None)
+                    ]
         if self.boundary_conditions == 'rotated':
             mid_v = diag_intersection(crd_0, crd_1, self.layout.ancillas.values())
 
@@ -541,7 +560,7 @@ def short_seq(a, b, l):
     the other way.
     """
     d = abs(b - a)
-    if d < 2*l - d:
+    if (l is None) or (d < 2*l - d):
         return range(min(a, b) + 1, max(a, b), 2)
     else:
         return range(min(a, b) - 1, -1, -2) + range(max(a, b) + 1, 2*l, 2)
@@ -574,7 +593,10 @@ def toric_dist(crd_0, crd_1, l):
     account the minimum length path on a torus.
     """
     dx, dy = abs(crd_0[0] - crd_1[0]), abs(crd_0[1] - crd_1[1])
-    return (min(dx, 2 * l - dx) + min(dy, 2 * l - dy))/2 #intdiv
+    if l:
+        return (min(dx, 2 * l - dx) + min(dy, 2 * l - dy))/2 #intdiv
+    else:
+        return dx + dy
 
 def diag_pth(crd_0, crd_1):
     """
@@ -595,7 +617,7 @@ def diag_intersection(crd_0, crd_1, ancs=None):
     vs = corners(crd_0, crd_1)
 
     if ancs:
-        if vs[0] in sum(ancs, ()):
+        if vs[0] in sum(list(ancs), []):
             mid_v = vs[0]
         else:
             mid_v = vs[1]
