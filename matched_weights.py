@@ -3,6 +3,8 @@ from scipy.special import binom
 import decoding_2d as dc
 import itertools as it
 import networkx as nx
+from operator import mul
+import sparse_pauli as sp
 
 shifts = [(1, -1), (-1, -1), (1, 1), (-1, 1)] # data to ancilla
 big_shifts = [(2, -2), (-2, -2), (2, 2), (-2, 2)] # ancilla to ancilla
@@ -152,6 +154,94 @@ def path_prob(g, v=None):
 
 #---------------------------------------------------------------------#
 
+#-------------------------belief propagation, etc.--------------------#
+def pauli_to_tpls(pauli, sprt):
+    output_dict = {}
+    # AAAAAAAAAAAAAAH
+    for q in sprt:
+        if q in pauli.x_set:
+            if q in pauli.z_set:
+                output_dict[q] = 3
+            else:
+                output_dict[q] = 2
+        elif q in pauli.z_set:
+            output_dict[q] = 1
+        else:
+            output_dict[q] = 0
+
+    return output_dict.items()
+
+
+def propagate_beliefs(g, n_steps):
+    """
+    To get decent marginal probabilities to feed in to multi-path
+    matching, I'm going to try straight-forward Poulin/Chung BP. 
+    """
+
+    for _ in range(n_steps):
+        # From check to qubit
+        for v in (_ for _ in g.nodes() if type(_) == str):
+            #sum over local Pauli group
+            sprt = g.node[v]['check'].support()
+            lpg = it.ifilter(lambda p: p.com(g.node[v]['check']) == g.node[v]['syndrome'],
+                                sp.local_group(sprt))
+            for elem in it.imap(lambda p: pauli_to_tpls(p, sprt), lpg):
+                for tpl in elem:
+                    summand = reduce(mul, [g.node[q]['mqc'][v][dx] 
+                                            for q, dx in elem if (q, dx) != tpl])
+                    g.node[v]['mcq'][tpl[0]][tpl[1]] += summand 
+            
+            # normalize
+            for k in g.node[v]['mcq'].keys():
+                g.node[v]['mcq'][k] /= sum(g.node[v]['mcq'][k])
+
+        # From qubit to check
+        for v in (_ for _ in g.nodes() if type(_) == int):
+            # product over neighbours not c
+            chex = list(g[v].keys())
+            for chek in chex:
+                other_msgs = [g.node[_]['mcq'][v] for _ in chex if _ != chek]
+                g.node[v]['mqc'][chek] = g.node[v]['prior'] * reduce(mul, other_msgs)
+
+            # normalize
+            for k in g.node[v]['mqc'].keys():
+                g.node[v]['mqc'][k] /= sum(g.node[v]['mqc'][k])
+
+    
+
+def tanner_graph(stabilisers, error, mdl):
+    """
+    To propagate beliefs, we need to start a graph off with a set of 
+    error probabilities on each qubit, and a value for the syndrome on
+    each ancilla bit. 
+    
+    I assume each stabiliser is a sparse_pauli.Pauli.
+    
+    Probabilities over 1-bit Paulis are ordered I, Z, X, Y.
+
+    """
+    g = nx.Graph()
+    for dx, s in enumerate(stabilisers):
+        label = 's' + str(dx)
+        g.add_node(
+                    label,
+                    check=s,
+                    syndrome=error.com(s),
+                    mcq={b: np.zeros_like(mdl) for b in s.support()}
+                    )
+        
+        for bit in s.support():
+            g.add_node(bit, prior=np.array(mdl))
+            g.add_edge(label, bit)
+
+    for v in (_ for _ in g.nodes() if type(_) == int):
+        g.node[v]['mqc'] = {c: np.array(mdl) for c in g[v].keys()}
+    
+    return g
+
+#---------------------------------------------------------------------#
+
+#-------------------------------main things---------------------------#
 def digraph_to_mat(g, vertices):
     digraph_paths(g) #subroutine
     p_mat = np.zeros((len(vertices), len(vertices)))
