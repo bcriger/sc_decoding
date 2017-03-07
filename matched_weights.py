@@ -79,12 +79,12 @@ def num_paths_forward(g, v=None):
     If you ever need to make this faster, you can check for values in
     the cache before recursing. 
     """
-    if v is None: # node labels can cast to False
-        no_kids = [n for n in g.nodes() if g.successors(n) == []]
+    if v is None: # node labels can cast to False, so don't do not(v).
+        no_kids = [n for n in g.nodes() if list(g.successors(n)) == []]
         return sum([num_paths_forward(g, w) for w in no_kids])
 
     # base case
-    if g.predecessors(v) == []:
+    if list(g.predecessors(v)) == []:
         g.node[v]['f_paths'] = 1
         return 1
     else:
@@ -97,13 +97,13 @@ def num_paths_backward(g, v=None):
     ugly copypaste of the function above.
     """
     if v is None: # node labels can cast to False
-        batmen = [n for n in g.nodes() if g.predecessors(n) == []]
+        batmen = [n for n in g.nodes() if list(g.predecessors(n)) == []]
         if len(batmen) > 1:
             raise NotImplementedError("multiple source nodes")
         v = batmen[0]
 
     # base case
-    if g.successors(v) == []:
+    if list(g.successors(v)) == []:
         g.node[v]['b_paths'] = 1
         return 1
     else:
@@ -125,6 +125,30 @@ def digraph_paths(g):
     for e in g.edges():
         g[e[0]][e[1]]['p_path'] = float(g.node[e[0]]['f_paths'] * g.node[e[1]]['b_paths']) / g_f_paths
 
+def path_prob(g, v=None):
+    """
+    Given a probability for an edge in a DAG to possess an error, 
+    we can calculate the probability that a path joins the source and 
+    sink node, by recursion, since:
+
+    p_path(A, B) = sum_{v in predecessors(B)} p_path(v) * p_edge(v, B)
+    
+    TODO: Think up better variable names than p_path, p_edge, etc.
+
+    """
+    if v is None: # node labels can cast to False, so don't do not(v).
+        no_kids = [n for n in g.nodes() if list(g.successors(n)) == []]
+        return sum([path_prob(g, w) for w in no_kids])
+
+    # base case
+    if list(g.predecessors(v)) == []:
+        g.node[v]['p_path'] = 1
+        return 1
+    else:
+        total_prob = sum([path_prob(g, w) * g[w][v]['p_edge']
+                                    for w in g.predecessors(v)])
+        g.node[v]['p_path'] = total_prob
+        return total_prob
 
 #---------------------------------------------------------------------#
 
