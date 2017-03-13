@@ -180,7 +180,7 @@ def propagate_beliefs(g, n_steps):
 
     for _ in range(n_steps):
         # From check to qubit
-        for v in (_ for _ in g.nodes() if type(_) == str):
+        for v in (n for n, d in g.nodes(data=True) if d['partition'] == 'c'):
             #sum over local Pauli group
             sprt = g.node[v]['check'].support()
             lpg = it.ifilter(lambda p: p.com(g.node[v]['check']) == g.node[v]['syndrome'],
@@ -196,7 +196,7 @@ def propagate_beliefs(g, n_steps):
                 g.node[v]['mcq'][k] /= sum(g.node[v]['mcq'][k])
 
         # From qubit to check
-        for v in (_ for _ in g.nodes() if type(_) == int):
+        for v in (n for n, d in g.nodes(data=True) if d['partition'] == 'b'):
             # product over neighbours not c
             chex = list(g[v].keys())
             for chek in chex:
@@ -207,7 +207,25 @@ def propagate_beliefs(g, n_steps):
             for k in g.node[v]['mqc'].keys():
                 g.node[v]['mqc'][k] /= sum(g.node[v]['mqc'][k])
 
+    pass # subroutine, you move me
+
+def beliefs(g):
+    """
+    Takes an updated Tanner graph and outputs a dictionary taking qubit
+    labels to probability distributions.
+    """
+    output = dict()
     
+    for v in (n for n, d in g.nodes(data=True)
+                        if d['partition'] == 'b'):
+
+        output[v] = reduce(mul,
+                            (g.node[u]['mcq'][v] for u in g.neighbors(v)),
+                                g.node[v]['prior'])
+
+        output[v] /= sum(output[v])
+    
+    return output
 
 def tanner_graph(stabilisers, error, mdl):
     """
@@ -227,11 +245,12 @@ def tanner_graph(stabilisers, error, mdl):
                     label,
                     check=s,
                     syndrome=error.com(s),
-                    mcq={b: np.zeros_like(mdl) for b in s.support()}
+                    mcq={b: np.zeros_like(mdl) for b in s.support()},
+                    partition='c'
                     )
         
         for bit in s.support():
-            g.add_node(bit, prior=np.array(mdl))
+            g.add_node(bit, prior=np.array(mdl), partition='b')
             g.add_edge(label, bit)
 
     for v in (_ for _ in g.nodes() if type(_) == int):
