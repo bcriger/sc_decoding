@@ -180,28 +180,45 @@ def propagate_beliefs(g, n_steps):
 
     for _ in range(n_steps):
         # From check to qubit
-        for v in (n for n, d in g.nodes(data=True) if d['partition'] == 'c'):
+        for v in _checks(g):
             #sum over local Pauli group
-            sprt = g.node[v]['check'].support()
-            lpg = it.ifilter(lambda p: p.com(g.node[v]['check']) == g.node[v]['syndrome'],
-                                sp.local_group(sprt))
-            for elem in it.imap(lambda p: pauli_to_tpls(p, sprt), lpg):
-                for tpl in elem:
-                    summand = reduce(mul, [g.node[q]['mqc'][v][dx] 
-                                            for q, dx in elem if (q, dx) != tpl])
-                    g.node[v]['mcq'][tpl[0]][tpl[1]] += summand 
+            check = g.node[v]['check']
+            sprt = check.support()
+            lpg = list(map(lambda p: pauli_to_tpls(p, sprt),
+                        list(it.ifilter(lambda p: p.com(check) == g.node[v]['syndrome'],
+                                sp.local_group(sprt)))))
+            # print v
+            for bit, pdx in it.product(sprt, range(4)):
+                # print bit, pdx
+                for big_p in lpg:
+                    if (bit, pdx) in big_p:
+                        summand = reduce(mul, [g.node[q]['mqc'][v][dx] 
+                                            for q, dx in big_p if q != bit])
+                        # print big_p, summand
+                        g.node[v]['mcq'][bit][pdx] += summand
+                # print '-------'
+
+            # code above looks right, and sort of matches Poulin/Chung.
+            # could be faster if we iterated over lpg once. 
+            
+            # code below wrong?
+            # for elem in it.imap(lambda p: pauli_to_tpls(p, sprt), lpg):
+            #     for tpl in elem:
+            #         summand = reduce(mul, [g.node[q]['mqc'][v][dx] 
+            #                                 for q, dx in elem if q != tpl[0]])
+            #         g.node[v]['mcq'][tpl[0]][tpl[1]] += summand 
             
             # normalize
             for k in g.node[v]['mcq'].keys():
                 g.node[v]['mcq'][k] /= sum(g.node[v]['mcq'][k])
 
         # From qubit to check
-        for v in (n for n, d in g.nodes(data=True) if d['partition'] == 'b'):
+        for v in _bits(g):
             # product over neighbours not c
             chex = list(g[v].keys())
             for chek in chex:
-                other_msgs = [g.node[_]['mcq'][v] for _ in chex if _ != chek]
-                g.node[v]['mqc'][chek] = g.node[v]['prior'] * reduce(mul, other_msgs)
+                msgs = [g.node[_]['mcq'][v] for _ in chex if _ != chek]
+                g.node[v]['mqc'][chek] = reduce(mul, msgs, g.node[v]['prior'])
 
             # normalize
             for k in g.node[v]['mqc'].keys():
@@ -216,8 +233,7 @@ def beliefs(g):
     """
     output = dict()
     
-    for v in (n for n, d in g.nodes(data=True)
-                        if d['partition'] == 'b'):
+    for v in _bits(g):
 
         output[v] = reduce(mul,
                             (g.node[u]['mcq'][v] for u in g.neighbors(v)),
@@ -253,10 +269,26 @@ def tanner_graph(stabilisers, error, mdl):
             g.add_node(bit, prior=np.array(mdl), partition='b')
             g.add_edge(label, bit)
 
-    for v in (_ for _ in g.nodes() if type(_) == int):
+    for v in _bits(g):
         g.node[v]['mqc'] = {c: np.array(mdl) for c in g[v].keys()}
     
     return g
+
+def _checks(graph):
+    """
+    NX doesn't have bipartite tools in automatically, so here are some
+    hax.
+    """
+    return (n for n, d in graph.nodes(data=True)
+                            if d['partition'] == 'c')
+
+def _bits(graph):
+    """
+    NX doesn't have bipartite tools in automatically, so here are some
+    hax.
+    """
+    return (n for n, d in graph.nodes(data=True)
+                            if d['partition'] == 'b')
 
 #---------------------------------------------------------------------#
 
