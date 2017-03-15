@@ -3,7 +3,7 @@ from scipy.special import binom
 import decoding_2d as dc
 import itertools as it
 import networkx as nx
-from operator import mul
+from operator import mul, add
 import sparse_pauli as sp
 
 shifts = [(1, -1), (-1, -1), (1, 1), (-1, 1)] # data to ancilla
@@ -41,12 +41,14 @@ def crds_to_digraph(crd_0, crd_1, vertices):
     In order to count paths on some digraph, we first have to make
     that graph.
     """
+    gd_pts = vertices + [crd_1] # allowed support on terminal if bdy
     crnrs = map(np.array, dc.corners(crd_0, crd_1))
     deltas = [crnr - crd_0 for crnr in crnrs]
 
     g = nx.DiGraph()
 
-    if any(np.all(elem == np.array([0,0])) for elem in deltas):
+    # straight lines
+    if any(np.all(elem == np.array([0, 0])) for elem in deltas):
         delta = [_ for _ in deltas if not(np.all(_ == np.array([0, 0])))][0]
         n = abs(delta[0]) / 2 # ancilla-ancilla steps
         step = delta / n 
@@ -63,7 +65,7 @@ def crds_to_digraph(crd_0, crd_1, vertices):
     ancs_in_bbox = []
     for p in it.product(range(n_0 + 1), range(n_1 + 1)):
         new_anc = tuple(crd_0 + p[0] * step_0 + p[1] * step_1)
-        if not(new_anc in ancs_in_bbox) and (new_anc in vertices):
+        if not(new_anc in ancs_in_bbox) and (new_anc in gd_pts):
             ancs_in_bbox.append(new_anc)
 
     g.add_nodes_from(ancs_in_bbox)
@@ -73,6 +75,21 @@ def crds_to_digraph(crd_0, crd_1, vertices):
             g.add_edge(v, w)
 
     return g
+
+def bdy_digraph(crd, vertices, bdy_pts):
+    """
+    Produces the union of graphs between a point and a specified set of
+    boundary points. 
+    You'll have to do this with both boundaries for each side, since
+    either side can be likelier now. 
+    We take the union over the individual graphs between the crd of
+    interest and all the closest points from the bdy_pts. 
+    """
+    close_pts = close_bdy_pts(crd, bdy_pts)
+    return reduce(nx.compose, [crds_to_digraph(crd, pt, vertices)
+                                                for pt in close_pts])
+
+#-----------------------------path counting---------------------------#
 
 def num_paths_forward(g, v=None):
     """
@@ -127,6 +144,33 @@ def digraph_paths(g):
     for e in g.edges():
         g[e[0]][e[1]]['p_path'] = float(g.node[e[0]]['f_paths'] * g.node[e[1]]['b_paths']) / g_f_paths
 
+#-------------------------------------path probabilities--------------#
+
+def p_anticom(belief, stab):
+    if stab == 'X':
+        return belief[1] + belief[3]
+    elif stab == 'Z':
+        return belief[2] + belief[3]
+    else:
+        raise ValueError("stab {} not recognized.".format(stab))
+
+def record_beliefs(beliefs, g, layout, stab_type):
+    """
+    Given a dict of beliefs on data qubits ('beliefs'), a digraph
+    taking us from one coord to another ('g'), and a layout object
+    ('layout'), we put the appropriate beliefs (given by p_anticom) on 
+    the edges of g as 'p_edge', so that we can run 'path_prob' later. 
+    """
+    for edge in list(g.edges()):
+        q = tuple((c0 + c1) / 2
+                    for c0, c1 in zip(edge[0], edge[1])) # intdiv
+        
+        p = p_anticom(beliefs[layout.map[q]], stab_type)
+        
+        g[edge[0]][edge[1]]['p_edge'] = p
+
+    pass
+
 def path_prob(g, v=None):
     """
     Given a probability for an edge in a DAG to possess an error, 
@@ -153,6 +197,102 @@ def path_prob(g, v=None):
         return total_prob
 
 #---------------------------------------------------------------------#
+
+#----------------------edge weights-----------------------------------#
+
+def bdy_edge(crd, vertices, bdy_1, bdy_2, beliefs, layout, stab_type):
+    """
+    Produces two bdy_digraphs, then assigns a close_pt and a weight
+    based on the minimum over the two.
+    To do this, we have to record the beliefs onto the subgraphs, 
+    calculate path_prob for each, then return the fancy_weight of the
+    higher probability. 
+    """
+    dg_1 = bdy_digraph(crd, vertices, bdy_1)
+    dg_2 = bdy_digraph(crd, vertices, bdy_2)
+    record_beliefs(beliefs, dg_1, layout, stab_type)
+    record_beliefs(beliefs, dg_2, layout, stab_type)
+    p_1, p_2 = map(path_prob, [dg_1, dg_2])
+    if p_1 > p_2:
+        wt = -np.log(p_1 / (1 - p_1))
+        close_pt = close_bdy_pts(crd, bdy_1)[0]
+    elif p_2 > p_1 :
+        wt = -np.log(p_2 / (1 - p_2))
+        close_pt = close_bdy_pts(crd, bdy_2)[0]
+    else:
+        raise RuntimeError("Boundary weight ambiguous "
+                            "(I thought this would never happen)")
+    return wt, close_pt
+
+def bulk_wt(crd_0, crd_1, vertices, beliefs, layout, stab_type):
+    """
+    Let's handle business for bulk edges as well, just returning the
+    weight.
+    """
+    dg = crds_to_digraph(crd_0, crd_1, vertices)
+    record_beliefs(beliefs, dg, layout, stab_type)
+    p = path_prob(dg)
+    return -np.log(p / (1 - p))
+
+def input_beliefs(sim, err, bp_rounds=None):
+    layout = sim.layout
+    stabs = dict(reduce(add, [layout.stabilisers()[_].items()
+                                for _ in 'XZ']))
+    mdl = sim.error_model.p_arr
+    tg = tanner_graph(stabs, err, mdl) # it only uses syndromes
+    
+    bp_rounds = bp_rounds if bp_rounds else 5 * max(sim.dx, sim.dy)
+    propagate_beliefs(tg, bp_rounds)
+    blfs = beliefs(tg)
+
+    return blfs
+
+def bp_graphs(sim, err, bp_rounds=None):
+    """
+    Create a pair of graphs to use in independent x/z matching by:
+     - running BP on the tanner graph
+     - message-passing to create edge weights based on min-len SAWs
+
+    bp_rounds defaults to 5*d.
+    """
+    layout = sim.layout
+    blfs = input_beliefs(sim, err, bp_rounds)
+    x_synd, z_synd = sim.syndromes(err)
+    
+    x_bdy_1 = layout.boundary['x_left']
+    x_bdy_2 = layout.boundary['x_right']
+    z_bdy_1 = layout.boundary['z_top']
+    z_bdy_2 = layout.boundary['z_bot']
+
+    x_verts, z_verts = layout.x_ancs(), layout.z_ancs()
+
+    # There seriously has to be a better way to do this
+    svb1b2t = [(x_synd, x_verts, x_bdy_1, x_bdy_2, 'X'),
+                (z_synd, z_verts, z_bdy_1, z_bdy_2, 'Z')]
+    out_graphs = []
+    for synd, vs, bdy_1, bdy_2, tp in svb1b2t:
+        graph = nx.Graph()
+        
+        # ancilla-to-boundary edges
+        for pt in synd:
+            crd = layout.map.inv[pt]
+            wt, c_pt = bdy_edge(crd, vs, bdy_1, bdy_2,
+                                blfs, layout, tp)
+            graph.add_edge(pt, (pt, 'b'), close_pt=c_pt, weight=wt)
+
+        # pair edges
+        for p, q in it.combinations(synd, r=2):
+            # boundary-boundary
+            graph.add_edge((p, 'b'), (q, 'b'), weight=0.)
+            
+            # bulk
+            c0, c1 = layout.map.inv[p], layout.map.inv[q]
+            wt = bulk_wt(c0, c1, vs, blfs, layout, tp)
+            graph.add_edge(p, q, weight=wt)
+
+        out_graphs.append(graph.copy())
+    
+    return tuple(out_graphs)
 
 #-------------------------belief propagation, etc.--------------------#
 def pauli_to_tpls(pauli, sprt):
@@ -253,9 +393,12 @@ def tanner_graph(stabilisers, error, mdl):
     
     Probabilities over 1-bit Paulis are ordered I, Z, X, Y.
 
+    stabilisers have to be inserted in the form of a dict with entries
+    label: check
+
     """
     g = nx.Graph()
-    for dx, s in enumerate(stabilisers):
+    for dx, s in stabilisers.items():
         label = 's' + str(dx)
         g.add_node(
                     label,
@@ -333,6 +476,12 @@ def bbox_p_v_mat(crd_0, crd_1, vertices):
     g = crds_to_digraph(crd_0, crd_1, vertices)
     return digraph_to_mat(g, vertices)
 
+def close_bdy_pts(crd, bdy_verts):
+    bdy_dists = [dc.pair_dist(crd, v) for v in bdy_verts]
+    d = min(bdy_dists)
+    return [bdy_verts[_] for _ in range(len(bdy_verts))
+                                        if bdy_dists[_] == d]
+
 def bdy_p_v_mat(crd, bdy_verts, bulk_verts):
     """
     There are multiple shortest-length paths to the boundary.
@@ -346,10 +495,7 @@ def bdy_p_v_mat(crd, bdy_verts, bulk_verts):
     path leading to that boundary point. 
     """
     vertices = sorted(bdy_verts + bulk_verts)
-    bdy_dists = [dc.pair_dist(crd, v) for v in bdy_verts]
-    d = min(bdy_dists)
-    close_pts = [bdy_verts[_] for _ in range(len(bdy_verts))
-                                            if bdy_dists[_] == d]
+    close_pts = close_bdy_pts(crd, bdy_verts)
     g = reduce(nx.compose,
                 [crds_to_digraph(crd, pt, vertices)
                     for pt in close_pts])

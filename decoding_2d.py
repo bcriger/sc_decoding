@@ -17,12 +17,14 @@ from circuit_metric.SCLayoutClass import SCLayout, TCLayout, PCLayout
 from decoding_utils import blossom_path, cdef_str
 import error_model as em
 import itertools as it
+import matched_weights as mw
+from math import copysign
 import networkx as nx
 import numpy as np
 from operator import mul
-from math import copysign
-import sparse_pauli as sp
 import progressbar as pb
+import sparse_pauli as sp
+
 
 try:
     import matplotlib.pyplot as plt
@@ -438,7 +440,7 @@ class Sim2D(object):
             com_tpl = tuple(op.com(loop) for op in logs)
         return anticom_dict[com_tpl]
 
-    def run(self, n_trials, verbose=False, progress=True, dist_func=None):
+    def run(self, n_trials, verbose=False, progress=True, dist_func=None, bp=False):
         """
         Repeats the following cycle `n_trials` times:
          + Generate a random error
@@ -464,8 +466,12 @@ class Sim2D(object):
                 z_corr = self.graphAndCorrection(z_synd, 'X', dist_func=dist_func)
             else:
                 # with networkx interface (with/without blossom)
-                x_graph = self.graph(x_synd, dist_func=dist_func)
-                z_graph = self.graph(z_synd, dist_func=dist_func)
+                if bp:
+                    x_graph, z_graph = mw.bp_graphs(self, err)
+                else:
+                    x_graph = self.graph(x_synd, dist_func=dist_func)
+                    z_graph = self.graph(z_synd, dist_func=dist_func)
+                
                 x_corr = self.correction(x_graph, 'Z')
                 z_corr = self.correction(z_graph, 'X')
 
@@ -582,7 +588,7 @@ def pair_dist(crd_0, crd_1):
                 for v in [crd_0, crd_1]
             ]
     if (diff_vs[0][0] == diff_vs[0][1]) and (diff_vs[1][0] == diff_vs[1][1]):
-        return (diff_vs[0][0] + diff_vs[1][0]) / 2 # TRUST IN GOD
+        return (diff_vs[0][0] + diff_vs[1][0]) / 2 # intdiv
     else:
         raise ValueError("math don't work")
 
@@ -594,7 +600,7 @@ def toric_dist(crd_0, crd_1, l):
     """
     dx, dy = abs(crd_0[0] - crd_1[0]), abs(crd_0[1] - crd_1[1])
     if l:
-        return (min(dx, 2 * l - dx) + min(dy, 2 * l - dy))/2 #intdiv
+        return (min(dx, 2 * l - dx) + min(dy, 2 * l - dy)) / 2 # intdiv
     else:
         return dx + dy
 
