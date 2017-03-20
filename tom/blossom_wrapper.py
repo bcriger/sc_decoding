@@ -47,7 +47,7 @@ def insert_wm(wm, cutoff=None):
 
     num_vertices = wm.shape[0]
 
-    b = Bloss.Bloss(max_vertices=num_vertices+500, vertex_buffer=20)
+    b = Bloss.Bloss(tbw=10**6, max_vertices=num_vertices+500, vertex_buffer=20)
 
     # Run over weight matrix
     for index in range(1, len(wm)):

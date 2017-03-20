@@ -2,6 +2,7 @@ import numpy as np
 from scipy.special import binom
 import decoding_2d as dc
 import itertools as it
+from line_profiler import *
 import networkx as nx
 from operator import mul, add
 import sparse_pauli as sp
@@ -235,13 +236,16 @@ def bulk_wt(crd_0, crd_1, vertices, beliefs, layout, stab_type):
     return -np.log(p / (1 - p))
 
 def input_beliefs(sim, err, bp_rounds=None):
+    """
+    bp_rounds defaults to d.
+    """
     layout = sim.layout
     stabs = dict(reduce(add, [layout.stabilisers()[_].items()
                                 for _ in 'XZ']))
     mdl = sim.error_model.p_arr
     tg = tanner_graph(stabs, err, mdl) # it only uses syndromes
     
-    bp_rounds = bp_rounds if bp_rounds else 5 * max(sim.dx, sim.dy)
+    bp_rounds = bp_rounds if bp_rounds else max(sim.dx, sim.dy)
     propagate_beliefs(tg, bp_rounds)
     blfs = beliefs(tg)
 
@@ -252,8 +256,7 @@ def bp_graphs(sim, err, bp_rounds=None):
     Create a pair of graphs to use in independent x/z matching by:
      - running BP on the tanner graph
      - message-passing to create edge weights based on min-len SAWs
-
-    bp_rounds defaults to 5*d.
+    
     """
     layout = sim.layout
     blfs = input_beliefs(sim, err, bp_rounds)
@@ -311,6 +314,18 @@ def pauli_to_tpls(pauli, sprt):
 
     return output_dict.items()
 
+_order = {'Z': 1, 'X': 2, 'Y': 3}
+def str_sprt_to_tpl(str_sprt, sprt):
+    """
+    pads a sparse_pauli.Pauli with identities, converting to a tuple
+    which is ordered the same as the support.
+    """
+    pl_lst = [0 for _ in range(len(sprt))]
+    
+    for char, lbl in zip(*str_sprt):
+        pl_lst[ sprt.index(lbl) ] = _order[char]
+    
+    return tuple(pl_lst)
 
 def propagate_beliefs(g, n_steps):
     """
@@ -319,52 +334,78 @@ def propagate_beliefs(g, n_steps):
     """
 
     for _ in range(n_steps):
-        # From check to qubit
-        for v in _checks(g):
-            #sum over local Pauli group
-            check = g.node[v]['check']
-            sprt = check.support()
-            lpg = list(map(lambda p: pauli_to_tpls(p, sprt),
-                        list(it.ifilter(lambda p: p.com(check) == g.node[v]['syndrome'],
-                                sp.local_group(sprt)))))
-            # print v
-            for bit, pdx in it.product(sprt, range(4)):
-                # print bit, pdx
-                for big_p in lpg:
-                    if (bit, pdx) in big_p:
-                        summand = reduce(mul, [g.node[q]['mqc'][v][dx] 
-                                            for q, dx in big_p if q != bit])
-                        # print big_p, summand
-                        g.node[v]['mcq'][bit][pdx] += summand
-                # print '-------'
 
-            # code above looks right, and sort of matches Poulin/Chung.
-            # could be faster if we iterated over lpg once. 
-            
-            # code below wrong?
-            # for elem in it.imap(lambda p: pauli_to_tpls(p, sprt), lpg):
-            #     for tpl in elem:
-            #         summand = reduce(mul, [g.node[q]['mqc'][v][dx] 
-            #                                 for q, dx in elem if q != tpl[0]])
-            #         g.node[v]['mcq'][tpl[0]][tpl[1]] += summand 
-            
-            # normalize
-            for k in g.node[v]['mcq'].keys():
-                g.node[v]['mcq'][k] /= sum(g.node[v]['mcq'][k])
+        check_to_qubit(g)
+        qubit_to_check(g)
 
-        # From qubit to check
-        for v in _bits(g):
-            # product over neighbours not c
-            chex = list(g[v].keys())
-            for chek in chex:
-                msgs = [g.node[_]['mcq'][v] for _ in chex if _ != chek]
-                g.node[v]['mqc'][chek] = reduce(mul, msgs, g.node[v]['prior'])
+# This big block of variables is meant to pre-compute a lot of the
+# stuff that goes into check_to_qubit for surface codes at import-time.
 
-            # normalize
-            for k in g.node[v]['mqc'].keys():
-                g.node[v]['mqc'][k] /= sum(g.node[v]['mqc'][k])
+g_14 = [{0}, {1}, {2}, {3}]
+g_24 = [{0, 1}, {1, 2}, {2, 3}]
+g_12 = [{0}, {1}]
+g_22 = [{0, 1}]
 
-    pass # subroutine, you move me
+_xxxx_com = list(sp.generated_group(g_14, g_24))
+_zzzz_com = list(sp.generated_group(g_24, g_14))
+_xx_com   = list(sp.generated_group(g_12, g_22))
+_zz_com   = list(sp.generated_group(g_22, g_12))
+
+_xxxx_acom = [sp.Z([0]) * p for p in sp.generated_group(g_14, g_24)]
+_zzzz_acom = [sp.X([0]) * p for p in sp.generated_group(g_24, g_14)]
+_xx_acom   = [sp.Z([0]) * p for p in sp.generated_group(g_12, g_22)]
+_zz_acom   = [sp.X([0]) * p for p in sp.generated_group(g_22, g_12)]
+
+def tpl_lst(pauli_lst, n_bits):
+    return [str_sprt_to_tpl(p.str_sprt_pair(), range(n_bits))
+                                            for p in pauli_lst]
+
+_lpg_wrap = {
+                ('XXXX', 0): tpl_lst(_xxxx_com, 4),
+                ('XXXX', 1): tpl_lst(_xxxx_acom, 4),
+                ('ZZZZ', 0): tpl_lst(_zzzz_com, 4),
+                ('ZZZZ', 1): tpl_lst(_zzzz_acom, 4),
+                ('XX', 0):   tpl_lst(_xx_com, 2),
+                ('XX', 1):   tpl_lst(_xx_acom, 2),
+                ('ZZ', 0):   tpl_lst(_zz_com, 2),
+                ('ZZ', 1):   tpl_lst(_zz_acom, 2)
+            }
+profile = LineProfiler()
+@profile
+def check_to_qubit(g):
+    for v in _checks(g): 
+        check = g.node[v]['check']
+        sprt = check[1]
+        bs = range(len(sprt))
+        
+        mqc = np.array([g.node[q]['mqc'][v] for q in sprt])
+        
+        mcq = np.zeros_like(g.node[v]['mcq'].values())
+        # sum over local Pauli group
+        
+        lpg = _lpg_wrap[(check[0], g.node[v]['syndrome'])]
+        
+        factors = np.zeros(len(sprt) - 1)
+        for elem in (zip(bs, _) for _ in lpg):
+            summand = reduce(mul, (mqc[tpl] for tpl in elem))
+            for tpl in elem:
+                mcq[tpl] += summand / mqc[tpl] #TODO FINISH SWITCHING TO MCQ
+        
+        # normalize
+        for b in bs:
+            g.node[v]['mcq'][sprt[b]] = mcq[b, :] / sum(mcq[b, :])
+
+def qubit_to_check(g):
+    for v in _bits(g):
+        # product over neighbours not c
+        chex = list(g[v].keys())
+        for chek in chex:
+            msgs = [g.node[_]['mcq'][v] for _ in chex if _ != chek]
+            g.node[v]['mqc'][chek] = reduce(mul, msgs, g.node[v]['prior'])
+
+        # normalize
+        for k in g.node[v]['mqc'].keys():
+            g.node[v]['mqc'][k] /= sum(g.node[v]['mqc'][k])
 
 def beliefs(g):
     """
@@ -402,7 +443,7 @@ def tanner_graph(stabilisers, error, mdl):
         label = 's' + str(dx)
         g.add_node(
                     label,
-                    check=s,
+                    check=s.str_sprt_pair(),
                     syndrome=error.com(s),
                     mcq={b: np.zeros_like(mdl) for b in s.support()},
                     partition='c'

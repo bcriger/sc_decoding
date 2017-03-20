@@ -226,8 +226,12 @@ class Sim2D(object):
             #----------- end of c processing
         else:
             # Tom MWPM
-            """
+            # """
             n_lst = sorted(graph.nodes())
+            
+            if n_lst == []:
+                return sp.I
+            
             sz = len(n_lst) + 1
             weight_mat = np.zeros((sz, sz))
             for r, c in it.product(range(1, sz), repeat=2):
@@ -235,6 +239,13 @@ class Sim2D(object):
                     u, v = n_lst[r - 1], n_lst[c - 1]
                     if graph.has_edge(u, v):
                         weight_mat[r, c] = -graph[u][v]['weight']
+
+            # eliminate mixed sign
+            min_wt = np.amin(weight_mat) - 1
+            for r, c in it.product(range(1, sz), repeat=2):
+                if weight_mat[r, c] != 0:
+                    weight_mat[r, c] -= min_wt 
+            
             try:
                 match_lst = bw.insert_wm(weight_mat)
             except:
@@ -242,14 +253,15 @@ class Sim2D(object):
                     pkl.dump(weight_mat, phil)
                 raise ValueError("Tom's Blossom has gone wrong: "
                                     "weight_mat saved to error_wts.pkl.")
+            
             redundant_pairs = [(n_lst[j], n_lst[k-1])
                                 for j, k in enumerate(match_lst[1:])]
 
-            """
-            # """ NX MWPM
+            # """
+            """ NX MWPM
             matching = nx.max_weight_matching(graph, maxcardinality=True)
             redundant_pairs = matching.items()
-            # """
+            """
             # get rid of non-digraph duplicates
             pairs = []
             for tpl in redundant_pairs:
@@ -453,7 +465,7 @@ class Sim2D(object):
         bar = pb.ProgressBar()
         trials = bar(range( int(n_trials) )) if progress else range( int(n_trials) )
 
-        #self.layout.Print() # textual print of surface
+        # self.layout.Print() # textual print of surface
         # self.layout.Draw() # graphical print of surface
 
         for trial in trials:

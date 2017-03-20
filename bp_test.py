@@ -10,7 +10,7 @@ def two_bit_bp():
     Reproduce Figure 2a from Poulin/Chung 2008, using the BP from
     matched_weights.py.
     """
-    stabs = [sp.X([0, 1]), sp.Z([0, 1])]
+    stabs = {2: sp.X([0, 1]), 3: sp.Z([0, 1])}
     err = sp.X([0])
     mdl = [0.9, 0.1/3, 0.1/3, 0.1/3]
 
@@ -43,7 +43,7 @@ def yy_check():
     mdl = [0.9, 0.1 / 3, 0.1 / 3, 0.1 / 3]
     stabs = dict(reduce(add, [layout.stabilisers()[ltr].items() for ltr in 'XZ']))
     tg = mw.tanner_graph(stabs, err, mdl)
-    mw.propagate_beliefs(tg, 15)
+    mw.propagate_beliefs(tg, 3)
     b_list = mw.beliefs(tg)
     for key, val in b_list.items():
         print key, val
