@@ -2,7 +2,6 @@ import numpy as np
 from scipy.special import binom
 import decoding_2d as dc
 import itertools as it
-from line_profiler import *
 import networkx as nx
 from operator import mul, add
 import sparse_pauli as sp
@@ -370,8 +369,7 @@ _lpg_wrap = {
                 ('ZZ', 0):   tpl_lst(_zz_com, 2),
                 ('ZZ', 1):   tpl_lst(_zz_acom, 2)
             }
-profile = LineProfiler()
-@profile
+
 def check_to_qubit(g):
     for v in _checks(g): 
         check = g.node[v]['check']
@@ -385,8 +383,7 @@ def check_to_qubit(g):
         
         lpg = _lpg_wrap[(check[0], g.node[v]['syndrome'])]
         
-        factors = np.zeros(len(sprt) - 1)
-        for elem in (zip(bs, _) for _ in lpg):
+        for elem in [zip(bs, _) for _ in lpg]:
             summand = reduce(mul, (mqc[tpl] for tpl in elem))
             for tpl in elem:
                 mcq[tpl] += summand / mqc[tpl] #TODO FINISH SWITCHING TO MCQ

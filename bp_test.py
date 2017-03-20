@@ -43,7 +43,7 @@ def yy_check():
     mdl = [0.9, 0.1 / 3, 0.1 / 3, 0.1 / 3]
     stabs = dict(reduce(add, [layout.stabilisers()[ltr].items() for ltr in 'XZ']))
     tg = mw.tanner_graph(stabs, err, mdl)
-    mw.propagate_beliefs(tg, 3)
+    mw.propagate_beliefs(tg, 15)
     b_list = mw.beliefs(tg)
     for key, val in b_list.items():
         print key, val
