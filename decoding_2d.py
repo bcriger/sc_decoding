@@ -187,8 +187,8 @@ class Sim2D(object):
             # print( 'graph nodes: {0}'.format( graph.nodes() ) )
             # print( 'graph edges: {0}'.format( graph.edges() ) )
 
-            node_num = len(graph.nodes());
-            edge_num = len(graph.edges());
+            node_num = nx.number_of_nodes(graph)
+            edge_num = nx.number_of_edges(graph)
             # print( 'no of nodes : {0}, no of edges : {1}'.format(node_num,edge_num) )
             edges = self.ffi.new('Edge[%d]' % (edge_num) )
             cmatching = self.ffi.new('int[%d]' % (2*node_num) )
@@ -201,7 +201,7 @@ class Sim2D(object):
             for u,v in graph.edges():
                 uid = int(node2id[u])
                 vid = int(node2id[v])
-                wt = -int( graph[u][v]['weight'])
+                wt = -int( graph[u][v]['weight']) # weights from NetworkX
                 # print('weight of edge[{0}][{1}] = {2}'.format( uid, vid, wt) )
                 edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt;
                 e += 1
@@ -226,25 +226,34 @@ class Sim2D(object):
             #----------- end of c processing
         else:
             # Tom MWPM
-            # """
-            n_lst = sorted(graph.nodes())
+            """
+            bulk_vs = sorted(list([_ for _ in graph.nodes() if type(_) is int]))
+            bdy_vs = sorted(list([_ for _ in graph.nodes() if type(_) is tuple]))
             
-            if n_lst == []:
+            if bulk_vs == []:
                 return sp.I
             
-            sz = len(n_lst) + 1
-            weight_mat = np.zeros((sz, sz))
+            sz = len(bulk_vs) + 1
+            weight_mat = np.zeros((sz, sz), dtype=np.int_)
             for r, c in it.product(range(1, sz), repeat=2):
                 if r != c:
-                    u, v = n_lst[r - 1], n_lst[c - 1]
-                    if graph.has_edge(u, v):
-                        weight_mat[r, c] = -graph[u][v]['weight']
+                    u, v = bulk_vs[r - 1], bulk_vs[c - 1]
+                    weight_mat[r, c] = -graph[u][v]['weight']
+
+            for dx in range(1, sz):
+                u = bulk_vs[dx - 1]
+                v = (u, 'b')
+                weight_mat[0, dx] = -graph[u][v]['weight']
+                weight_mat[dx, 0] = weight_mat[0, dx]
 
             # eliminate mixed sign
             min_wt = np.amin(weight_mat) - 1
-            for r, c in it.product(range(1, sz), repeat=2):
-                if weight_mat[r, c] != 0:
-                    weight_mat[r, c] -= min_wt 
+            if min_wt != -1:
+                for r, c in it.product(range(1, sz), repeat=2):
+                    if weight_mat[r, c] != 0:
+                        weight_mat[r, c] -= min_wt 
+            
+            # weight_mat = weight_mat.clip(0, np.inf)
             
             try:
                 match_lst = bw.insert_wm(weight_mat)
@@ -257,11 +266,11 @@ class Sim2D(object):
             redundant_pairs = [(n_lst[j], n_lst[k-1])
                                 for j, k in enumerate(match_lst[1:])]
 
-            # """
-            """ NX MWPM
+            """
+            # """ NX MWPM
             matching = nx.max_weight_matching(graph, maxcardinality=True)
             redundant_pairs = matching.items()
-            """
+            # """
             # get rid of non-digraph duplicates
             pairs = []
             for tpl in redundant_pairs:
@@ -463,7 +472,8 @@ class Sim2D(object):
            the logical paulis
         """
         bar = pb.ProgressBar()
-        trials = bar(range( int(n_trials) )) if progress else range( int(n_trials) )
+        trials = range( int(n_trials) )
+        trials = bar(trials) if progress else trials
 
         # self.layout.Print() # textual print of surface
         # self.layout.Draw() # graphical print of surface
@@ -471,21 +481,21 @@ class Sim2D(object):
         for trial in trials:
             err = self.random_error()
             x_synd, z_synd = self.syndromes(err)
-
-            if self.useBlossom:
-                # without networkx interface (only with blossom)
-                x_corr = self.graphAndCorrection(x_synd, 'Z', dist_func=dist_func)
-                z_corr = self.graphAndCorrection(z_synd, 'X', dist_func=dist_func)
-            else:
-                # with networkx interface (with/without blossom)
-                if bp:
-                    x_graph, z_graph = mw.bp_graphs(self, err)
-                else:
-                    x_graph = self.graph(x_synd, dist_func=dist_func)
-                    z_graph = self.graph(z_synd, dist_func=dist_func)
-                
+            if bp:
+                x_graph, z_graph = mw.bp_graphs(self, err, bp_rounds=None)
                 x_corr = self.correction(x_graph, 'Z')
                 z_corr = self.correction(z_graph, 'X')
+            else:            
+                if self.useBlossom:
+                    # without networkx interface (only with blossom)
+                    x_corr = self.graphAndCorrection(x_synd, 'Z', dist_func=dist_func)
+                    z_corr = self.graphAndCorrection(z_synd, 'X', dist_func=dist_func)
+                else:
+                    # with networkx interface (with/without blossom)
+                    x_graph = self.graph(x_synd, dist_func=dist_func)
+                    z_graph = self.graph(z_synd, dist_func=dist_func)
+                    x_corr = self.correction(x_graph, 'Z')
+                    z_corr = self.correction(z_graph, 'X')
 
             log = self.logical_error(err, x_corr, z_corr)
             self.errors[log] += 1

@@ -1,10 +1,19 @@
 from __future__ import division
 import decoding_2d as dc
-import pickle as pkl
-import numpy as np
 from glob import glob
+import networkx as nx
+import numpy as np
 import pickle as pkl
 import seaborn as sb
+
+#-------------------------NetworkX Graph Drawing----------------------#
+def nx_draw(g):
+    pos = {v: np.array(v) for v in g.nodes()}
+    labels = {v: str(v) for v in g.nodes()}
+    nx.draw(g, pos)
+    nx.draw_networkx_labels(g, pos, labels)
+
+#---------------------------------------------------------------------#
 
 def merge_pickles(pattern):
     """

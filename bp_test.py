@@ -1,9 +1,72 @@
 import sparse_pauli as sp
 import matched_weights as mw
 from circuit_metric import SCLayoutClass as sc
-from operator import add
+from functools import reduce
+import itertools as it
+from operator import add, mul
+import networkx as nx
 import numpy as np
 from copy import deepcopy
+
+def p_path_test():
+    """
+    The purpose of this test is to show that when the probability of a
+    path is high, the all-paths probability is high, and when they're
+    all low, then it's low. We try to match some analytic solutions.
+    It returns the last graph examined
+    """
+
+    g = nx.DiGraph({
+                    0: {
+                        1: {'p_edge': 0.1}, 2: {'p_edge': 0.2}}
+                    })
+    print 'path_prob (supposed to be ~0.2653 for two edges 0.1, 0.2): '\
+            '{}'.format(mw.path_prob(g))
+
+    ps = np.random.rand(4)
+    g = nx.DiGraph()
+    g.add_edges_from([
+                        (0, 1, {'p_edge': ps[0]}),
+                        (0, 2, {'p_edge': ps[1]}),
+                        (1, 3, {'p_edge': ps[2]}),
+                        (2, 3, {'p_edge': ps[3]})
+                    ])
+
+    p0 = reduce(mul, [1 - p for p in ps])
+    p1 = p0 * ps[0] * ps[2] / ((1 - ps[0]) * (1 - ps[2]))
+    p1 += p0 * ps[1] * ps[3] / ((1 - ps[1]) * (1 - ps[3]))
+    print "{} = {} ? If so, that's good.".format(p1 / (p0 + p1), mw.path_prob(g))
+
+    ps = np.random.rand(6)
+    g = nx.DiGraph()
+    g.add_edges_from([
+                        (0, 1, {'p_edge': ps[0]}),
+                        (0, 2, {'p_edge': ps[1]}),
+                        (1, 3, {'p_edge': ps[2]}),
+                        (1, 4, {'p_edge': ps[3]}),
+                        (2, 4, {'p_edge': ps[4]}),
+                        (2, 5, {'p_edge': ps[5]})
+                    ])    
+    p0 = reduce(mul, [1 - p for p in ps])
+    p1 = p0 * ps[0] * ps[2] / ((1 - ps[0]) * (1 - ps[2]))
+    p1 += p0 * ps[0] * ps[3] / ((1 - ps[0]) * (1 - ps[3]))
+    p1 += p0 * ps[1] * ps[4] / ((1 - ps[1]) * (1 - ps[4]))
+    p1 += p0 * ps[1] * ps[5] / ((1 - ps[1]) * (1 - ps[5]))
+
+    print "{} = {} ? If so, that's good.".format(p1 / (p0 + p1), mw.path_prob(g))
+    
+    ps = np.random.rand(3)
+    g = nx.DiGraph()
+    g.add_edges_from([
+                        (0, 1, {'p_edge': ps[0]}),
+                        (1, 2, {'p_edge': ps[1]}),
+                        (2, 3, {'p_edge': ps[2]})
+                    ])    
+    p0 = reduce(mul, [1 - p for p in ps])
+    p1 = reduce(mul, [p for p in ps])
+    print "{} = {} ? If so, that's good.".format(p1 / (p0 + p1), mw.path_prob(g))
+    
+    return g
 
 def two_bit_bp():
     """

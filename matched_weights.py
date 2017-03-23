@@ -41,7 +41,7 @@ def crds_to_digraph(crd_0, crd_1, vertices):
     In order to count paths on some digraph, we first have to make
     that graph.
     """
-    gd_pts = vertices + [crd_1] # allowed support on terminal if bdy
+    gd_pts = list(vertices) + [crd_1] # allowed support on terminal if bdy
     crnrs = map(np.array, dc.corners(crd_0, crd_1))
     deltas = [crnr - crd_0 for crnr in crnrs]
 
@@ -171,34 +171,77 @@ def record_beliefs(beliefs, g, layout, stab_type):
 
     pass
 
+# def path_prob(g, v=None):
+#     """
+#     Given a probability for an edge in a DAG to possess an error, 
+#     we can calculate the probability that a path joins the source and 
+#     sink node, by recursion, since:
+
+#     p_path(A, B) = sum_{v in predecessors(B)} p_path(v) * p_edge(v, B)
+    
+#     TODO: Think up better variable names than p_path, p_edge, etc.
+
+#     """
+#     if v is None: # node labels can cast to False, so don't do not(v).
+#         no_kids = [n for n in g.nodes() if list(g.successors(n)) == []]
+#         probs = [path_prob(g, w) for w in no_kids]
+#         denom = reduce(mul, [(1. - p) for p in probs])
+#         return denom * sum([p / (1. - p) for p in probs])
+
+#     # caching
+#     if 'p_path' in g.node[v]:
+#         return g.node[v]['p_path']
+
+#     # base case
+#     if list(g.predecessors(v)) == []:
+#         g.node[v]['p_path'] = 1
+#         return 1
+#     else:
+#         # recurse
+#         probs = [path_prob(g, w)  * g[w][v]['p_edge'] 
+#                             for w in g.predecessors(v)]
+#         denom = reduce(mul, [(1. - p) for p in probs])
+#         total_prob = denom * sum([p / (1. - p) for p in probs])
+#         g.node[v]['p_path'] = total_prob
+#         return total_prob
+
 def path_prob(g, v=None):
     """
-    Given a probability for an edge in a DAG to possess an error, 
-    we can calculate the probability that a path joins the source and 
-    sink node, by recursion, since:
-
-    p_path(A, B) = sum_{v in predecessors(B)} p_path(v) * p_edge(v, B)
-    
-    TODO: Think up better variable names than p_path, p_edge, etc.
-
+    For some reason, I don't think the function `path_prob' is
+    well-motivated. 
+    I don't think it's calculating the right thing. 
+    I've done a derivation in ReWeighting.tex that does calculate the
+    right(ish) thing, which is the odds that there's a path joining two
+    vertices given that it's either that or an empty bbox. 
     """
     if v is None: # node labels can cast to False, so don't do not(v).
         no_kids = [n for n in g.nodes() if list(g.successors(n)) == []]
-        return sum([path_prob(g, w) for w in no_kids])
-
-    # base case
-    if list(g.predecessors(v)) == []:
-        g.node[v]['p_path'] = 1
+        o = sum([path_prob(g, w) for w in no_kids])
+        return o / (o + 1.) # terrible
+    elif 'o_path' in g.node[v]:
+        # caching
+        return g.node[v]['o_path']
+    elif list(g.predecessors(v)) == []:
+        # base case
+        # g.node[v]['o_path'] = 1
         return 1
     else:
-        total_prob = sum([path_prob(g, w) * g[w][v]['p_edge']
-                                    for w in g.predecessors(v)])
-        g.node[v]['p_path'] = total_prob
-        return total_prob
+        # recurse
+        odds = [path_prob(g, w) 
+                * g[w][v]['p_edge'] / (1. - g[w][v]['p_edge']) 
+                                    for w in g.predecessors(v)]
+        g.node[v]['o_path'] = sum(odds)
+        return g.node[v]['o_path']
+
 
 #---------------------------------------------------------------------#
 
 #----------------------edge weights-----------------------------------#
+
+def nlo(p):
+    if (p > 1) or (p < 0):
+        raise ValueError("bad p: {}".format(p))
+    return -np.log(p / (1. - p))
 
 def bdy_edge(crd, vertices, bdy_1, bdy_2, beliefs, layout, stab_type):
     """
@@ -214,10 +257,10 @@ def bdy_edge(crd, vertices, bdy_1, bdy_2, beliefs, layout, stab_type):
     record_beliefs(beliefs, dg_2, layout, stab_type)
     p_1, p_2 = map(path_prob, [dg_1, dg_2])
     if p_1 > p_2:
-        wt = -np.log(p_1 / (1 - p_1))
+        wt = nlo(p_1)
         close_pt = close_bdy_pts(crd, bdy_1)[0]
     elif p_2 > p_1 :
-        wt = -np.log(p_2 / (1 - p_2))
+        wt = nlo(p_2)
         close_pt = close_bdy_pts(crd, bdy_2)[0]
     else:
         raise RuntimeError("Boundary weight ambiguous "
@@ -232,11 +275,12 @@ def bulk_wt(crd_0, crd_1, vertices, beliefs, layout, stab_type):
     dg = crds_to_digraph(crd_0, crd_1, vertices)
     record_beliefs(beliefs, dg, layout, stab_type)
     p = path_prob(dg)
-    return -np.log(p / (1 - p))
+    
+    return nlo(p)
 
 def input_beliefs(sim, err, bp_rounds=None):
     """
-    bp_rounds defaults to d.
+    bp_rounds defaults to 5*d.
     """
     layout = sim.layout
     stabs = dict(reduce(add, [layout.stabilisers()[_].items()
@@ -244,13 +288,15 @@ def input_beliefs(sim, err, bp_rounds=None):
     mdl = sim.error_model.p_arr
     tg = tanner_graph(stabs, err, mdl) # it only uses syndromes
     
-    bp_rounds = bp_rounds if bp_rounds else max(sim.dx, sim.dy)
+    if bp_rounds is None:
+        bp_rounds = 5 * max(sim.dx, sim.dy)
+
     propagate_beliefs(tg, bp_rounds)
     blfs = beliefs(tg)
 
     return blfs
 
-def bp_graphs(sim, err, bp_rounds=None):
+def bp_graphs(sim, err, bp_rounds=None, precision=4):
     """
     Create a pair of graphs to use in independent x/z matching by:
      - running BP on the tanner graph
@@ -261,10 +307,13 @@ def bp_graphs(sim, err, bp_rounds=None):
     blfs = input_beliefs(sim, err, bp_rounds)
     x_synd, z_synd = sim.syndromes(err)
     
-    x_bdy_1 = layout.boundary['x_left']
-    x_bdy_2 = layout.boundary['x_right']
-    z_bdy_1 = layout.boundary['z_top']
-    z_bdy_2 = layout.boundary['z_bot']
+    if sim.boundary_conditions == 'closed':
+        x_bdy_1, x_bdy_2, z_bdy_1, z_bdy_2 = None, None, None, None
+    else:
+        x_bdy_1 = layout.boundary['x_left']
+        x_bdy_2 = layout.boundary['x_right']
+        z_bdy_1 = layout.boundary['z_top']
+        z_bdy_2 = layout.boundary['z_bot']
 
     x_verts, z_verts = layout.x_ancs(), layout.z_ancs()
 
@@ -276,21 +325,39 @@ def bp_graphs(sim, err, bp_rounds=None):
         graph = nx.Graph()
         
         # ancilla-to-boundary edges
-        for pt in synd:
-            crd = layout.map.inv[pt]
-            wt, c_pt = bdy_edge(crd, vs, bdy_1, bdy_2,
-                                blfs, layout, tp)
-            graph.add_edge(pt, (pt, 'b'), close_pt=c_pt, weight=wt)
+        if bdy_1 is not None:
+            for pt in synd:
+                crd = layout.map.inv[pt]
+                wt, c_pt = bdy_edge(crd, vs, bdy_1, bdy_2,
+                                    blfs, layout, tp)
+
+                # NX does MAXIMUM-weight matching ----->------->----v
+                graph.add_edge(pt, (pt, 'b'), close_pt=c_pt, weight=-wt)
 
         # pair edges
+        if bdy_1 is not None:
+            for p, q in it.combinations(synd, r=2):
+                # boundary-boundary
+                graph.add_edge((p, 'b'), (q, 'b'), weight=0.)
+        
         for p, q in it.combinations(synd, r=2):
-            # boundary-boundary
-            graph.add_edge((p, 'b'), (q, 'b'), weight=0.)
-            
             # bulk
             c0, c1 = layout.map.inv[p], layout.map.inv[q]
             wt = bulk_wt(c0, c1, vs, blfs, layout, tp)
-            graph.add_edge(p, q, weight=wt)
+            # MAXIMUM-weight matching->-v
+            graph.add_edge(p, q, weight=-wt)
+
+        # Temporary: Clean up edge weights for comparison to integer
+        # if list(graph.edges()):
+        #     min_wt = min([edge[2]['weight'] for edge in graph.edges(data=True)])
+        #     for u, v in graph.edges():
+        #         graph[u][v]['weight'] += min_wt
+        #     nrm = min(filter(lambda x: x !=0,
+        #         [edge[2]['weight'] for edge in graph.edges(data=True)]))
+        #     for u, v in graph.edges():
+        #         graph[u][v]['weight'] /= nrm
+                
+            
 
         out_graphs.append(graph.copy())
     
@@ -384,9 +451,9 @@ def check_to_qubit(g):
         lpg = _lpg_wrap[(check[0], g.node[v]['syndrome'])]
         
         for elem in [zip(bs, _) for _ in lpg]:
-            summand = reduce(mul, (mqc[tpl] for tpl in elem))
+            summand = reduce(mul, (mqc[tpl] for tpl in elem)) # slow
             for tpl in elem:
-                mcq[tpl] += summand / mqc[tpl] #TODO FINISH SWITCHING TO MCQ
+                mcq[tpl] += summand / mqc[tpl]
         
         # normalize
         for b in bs:
@@ -442,7 +509,7 @@ def tanner_graph(stabilisers, error, mdl):
                     label,
                     check=s.str_sprt_pair(),
                     syndrome=error.com(s),
-                    mcq={b: np.zeros_like(mdl) for b in s.support()},
+                    mcq={b: np.ones_like(mdl) for b in s.support()},
                     partition='c'
                     )
         

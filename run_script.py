@@ -55,7 +55,11 @@ def entropic_dist(l, p, precision=4):
         entropic_correction = np.log(nc) / log_odds
         second_correction = np.log(1. + omega_ratio * odds ** 2) / log_odds
         float_weight =  dx + dy + entropic_correction + second_correction
-        return int(float_weight * 10 ** precision)
+        
+        if precision is None:
+            return float_weight
+        else:
+            return int(float_weight * 10 ** precision)
 
     return dist_func
 

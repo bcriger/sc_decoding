@@ -14,14 +14,16 @@ A wrapper has been added to insert an entire weight matrix at once,
 which is in the tests folder of the quantumerrorcorrection package.
 """
 from __future__ import division
+
+import numpy as np
+from collections import deque
+
 from sys import version_info
 if version_info[0] == 3:
     PY3 = True
     import queue
 elif version_info[0] == 2:
     PY3 = False
-    import numpy as np
-    from collections import deque
     import Queue as queue
 else:
     raise EnvironmentError("sys.version_info refers to a version of "
