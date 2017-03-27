@@ -2,6 +2,7 @@ import numpy as np
 from scipy.special import binom
 import decoding_2d as dc
 import itertools as it
+from line_profiler import LineProfiler
 import networkx as nx
 from operator import mul, add
 import sparse_pauli as sp
@@ -171,40 +172,6 @@ def record_beliefs(beliefs, g, layout, stab_type):
 
     pass
 
-# def path_prob(g, v=None):
-#     """
-#     Given a probability for an edge in a DAG to possess an error, 
-#     we can calculate the probability that a path joins the source and 
-#     sink node, by recursion, since:
-
-#     p_path(A, B) = sum_{v in predecessors(B)} p_path(v) * p_edge(v, B)
-    
-#     TODO: Think up better variable names than p_path, p_edge, etc.
-
-#     """
-#     if v is None: # node labels can cast to False, so don't do not(v).
-#         no_kids = [n for n in g.nodes() if list(g.successors(n)) == []]
-#         probs = [path_prob(g, w) for w in no_kids]
-#         denom = reduce(mul, [(1. - p) for p in probs])
-#         return denom * sum([p / (1. - p) for p in probs])
-
-#     # caching
-#     if 'p_path' in g.node[v]:
-#         return g.node[v]['p_path']
-
-#     # base case
-#     if list(g.predecessors(v)) == []:
-#         g.node[v]['p_path'] = 1
-#         return 1
-#     else:
-#         # recurse
-#         probs = [path_prob(g, w)  * g[w][v]['p_edge'] 
-#                             for w in g.predecessors(v)]
-#         denom = reduce(mul, [(1. - p) for p in probs])
-#         total_prob = denom * sum([p / (1. - p) for p in probs])
-#         g.node[v]['p_path'] = total_prob
-#         return total_prob
-
 def path_prob(g, v=None):
     """
     For some reason, I don't think the function `path_prob' is
@@ -222,8 +189,6 @@ def path_prob(g, v=None):
         # caching
         return g.node[v]['o_path']
     elif list(g.predecessors(v)) == []:
-        # base case
-        # g.node[v]['o_path'] = 1
         return 1
     else:
         # recurse
@@ -292,16 +257,14 @@ def input_beliefs(sim, err, bp_rounds=None):
         bp_rounds = 5 * max(sim.dx, sim.dy)
 
     propagate_beliefs(tg, bp_rounds)
-    blfs = beliefs(tg)
-
-    return blfs
+    
+    return beliefs(tg)
 
 def bp_graphs(sim, err, bp_rounds=None, precision=4):
     """
     Create a pair of graphs to use in independent x/z matching by:
-     - running BP on the tanner graph
+     - running BP on the Tanner graph
      - message-passing to create edge weights based on min-len SAWs
-    
     """
     layout = sim.layout
     blfs = input_beliefs(sim, err, bp_rounds)
@@ -355,31 +318,13 @@ def bp_graphs(sim, err, bp_rounds=None, precision=4):
         #     nrm = min(filter(lambda x: x !=0,
         #         [edge[2]['weight'] for edge in graph.edges(data=True)]))
         #     for u, v in graph.edges():
-        #         graph[u][v]['weight'] /= nrm
-                
-            
+        #         graph[u][v]['weight'] /= nrm    
 
         out_graphs.append(graph.copy())
     
     return tuple(out_graphs)
 
 #-------------------------belief propagation, etc.--------------------#
-def pauli_to_tpls(pauli, sprt):
-    output_dict = {}
-    # AAAAAAAAAAAAAAH
-    for q in sprt:
-        if q in pauli.x_set:
-            if q in pauli.z_set:
-                output_dict[q] = 3
-            else:
-                output_dict[q] = 2
-        elif q in pauli.z_set:
-            output_dict[q] = 1
-        else:
-            output_dict[q] = 0
-
-    return output_dict.items()
-
 _order = {'Z': 1, 'X': 2, 'Y': 3}
 def str_sprt_to_tpl(str_sprt, sprt):
     """
@@ -437,23 +382,71 @@ _lpg_wrap = {
                 ('ZZ', 1):   tpl_lst(_zz_acom, 2)
             }
 
+# profile = LineProfiler()
+# @profile
 def check_to_qubit(g):
     for v in _checks(g): 
         check = g.node[v]['check']
+        synd = g.node[v]['syndrome']
         sprt = check[1]
         bs = range(len(sprt))
         
         mqc = np.array([g.node[q]['mqc'][v] for q in sprt])
         
         mcq = np.zeros_like(g.node[v]['mcq'].values())
-        # sum over local Pauli group
-        
-        lpg = _lpg_wrap[(check[0], g.node[v]['syndrome'])]
-        
-        for elem in [zip(bs, _) for _ in lpg]:
-            summand = reduce(mul, (mqc[tpl] for tpl in elem)) # slow
-            for tpl in elem:
-                mcq[tpl] += summand / mqc[tpl]
+        # factor sum to avoid excess multiplications
+        if check[0] == 'XXXX':
+            for b in bs:
+                lst = [_ for _ in bs if _ != b]
+                ix1, ix2, ix3 = [mqc[_][0] + mqc[_][2] for _ in lst]
+                yz1, yz2, yz3 = [mqc[_][3] + mqc[_][1] for _ in lst]
+                odd_2 = yz2 * ix3 + ix2 * yz3
+                even_2 = yz2 * yz3 + ix2 * ix3
+                odd_3 = yz1 * even_2 + ix1 * odd_2
+                even_3 = ix1 * even_2 + yz1 * odd_2
+                mcq[b, 0] += odd_3 if synd == 1 else even_3
+                mcq[b, 2] += odd_3 if synd == 1 else even_3
+                mcq[b, 1] += even_3 if synd == 1 else odd_3
+                mcq[b, 3] += even_3 if synd == 1 else odd_3
+        elif check[0] == 'ZZZZ':
+            for b in bs:
+                lst = [_ for _ in bs if _ != b]
+                iz1, iz2, iz3 = [mqc[_][0] + mqc[_][1] for _ in lst]
+                xy1, xy2, xy3 = [mqc[_][2] + mqc[_][3] for _ in lst]
+                odd_2 = xy2 * iz3 + iz2 * xy3
+                even_2 = xy2 * xy3 + iz2 * iz3
+                odd_3 = xy1 * even_2 + iz1 * odd_2
+                even_3 = iz1 * even_2 + xy1 * odd_2
+                mcq[b, 0] += odd_3 if synd == 1 else even_3
+                mcq[b, 2] += even_3 if synd == 1 else odd_3
+                mcq[b, 1] += odd_3 if synd == 1 else even_3
+                mcq[b, 3] += even_3 if synd == 1 else odd_3
+        elif check[0] == 'XX':
+            for b in bs:
+                othr = [_ for _ in bs if _ != b][0]
+                ix = mqc[othr][0] + mqc[othr][2]
+                yz = mqc[othr][3] + mqc[othr][1]
+                mcq[b, 0] += ix if synd == 0 else yz
+                mcq[b, 1] += yz if synd == 0 else ix
+                mcq[b, 2] += ix if synd == 0 else yz
+                mcq[b, 3] += yz if synd == 0 else ix
+        elif check[0] == 'ZZ':
+            for b in bs:
+                othr = [_ for _ in bs if _ != b][0]
+                iz = mqc[othr][0] + mqc[othr][1]
+                xy = mqc[othr][2] + mqc[othr][3]
+                mcq[b, 0] += iz if synd == 0 else xy
+                mcq[b, 1] += iz if synd == 0 else xy
+                mcq[b, 2] += xy if synd == 0 else iz
+                mcq[b, 3] += xy if synd == 0 else iz
+        else:
+            # sum over local Pauli group
+            lpg = _lpg_wrap[(check[0], synd)]
+            
+            for elem in [zip(bs, _) for _ in lpg]:
+                summand = reduce(mul, (mqc[tpl] for tpl in elem)) # slow
+                for tpl in elem:
+                    mcq[tpl] += summand / mqc[tpl]
         
         # normalize
         for b in bs:
