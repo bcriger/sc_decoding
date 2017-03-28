@@ -120,7 +120,7 @@ class Sim3D(object):
 
         #ancillas (for restricting error to data bits)
         ancs = {self.layout.map[anc]
-                for anc in sum(self.layout.ancillas.values(), ())}
+                for anc in sum(self.layout.ancillas.values(), [])}
         err_hist = []
         synd_hist = {'X': [], 'Z': []}
         #perfect (quiescent state) initialization
@@ -385,8 +385,8 @@ def mwpm(verts, metric, bdy_info, use_blossom, ffi=None, blossom=None):
     """
     graph = flip_graph(verts, metric, bdy_info)
     if use_blossom:
-        node_num = len(graph.nodes());
-        edge_num = len(graph.edges());
+        node_num = nx.number_of_nodes(graph)
+        edge_num = nx.number_of_edges(graph)
         edges = ffi.new('Edge[%d]' % (edge_num) )
         cmatching = ffi.new('int[%d]' % (2*node_num) )
 
@@ -399,7 +399,7 @@ def mwpm(verts, metric, bdy_info, use_blossom, ffi=None, blossom=None):
             vid = int(node2id[v])
             wt = -int( graph[u][v]['weight'])
             # print('weight of edge[{0}][{1}] = {2}'.format( uid, vid, wt) )
-            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt;
+            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
             e += 1
 
         retVal = blossom.Init()

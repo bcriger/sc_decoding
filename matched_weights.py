@@ -1,10 +1,11 @@
-import numpy as np
-from scipy.special import binom
 import decoding_2d as dc
 import itertools as it
-from line_profiler import LineProfiler
+# from line_profiler import LineProfiler
+from math import fsum
 import networkx as nx
+import numpy as np
 from operator import mul, add
+from scipy.special import binom
 import sparse_pauli as sp
 
 shifts = [(1, -1), (-1, -1), (1, 1), (-1, 1)] # data to ancilla
@@ -172,6 +173,20 @@ def record_beliefs(beliefs, g, layout, stab_type):
 
     pass
 
+def safe_odds(p):
+    """
+    If I use a raw odds function, I get infs/nans when an input
+    probability is too close to 1 or 0.
+    Here, I 
+    """
+    if p < 1. - 10**-16:
+        if p > 10 **-16:
+            return p / (1. - p)
+        else:
+            return p
+    else:
+        return (1. - 10.**-16) * 10.**16
+
 def path_prob(g, v=None):
     """
     For some reason, I don't think the function `path_prob' is
@@ -183,7 +198,7 @@ def path_prob(g, v=None):
     """
     if v is None: # node labels can cast to False, so don't do not(v).
         no_kids = [n for n in g.nodes() if list(g.successors(n)) == []]
-        o = sum([path_prob(g, w) for w in no_kids])
+        o = fsum([path_prob(g, w) for w in no_kids])
         return o / (o + 1.) # terrible
     elif 'o_path' in g.node[v]:
         # caching
@@ -192,10 +207,9 @@ def path_prob(g, v=None):
         return 1
     else:
         # recurse
-        odds = [path_prob(g, w) 
-                * g[w][v]['p_edge'] / (1. - g[w][v]['p_edge']) 
+        odds = [path_prob(g, w) * safe_odds(g[w][v]['p_edge']) 
                                     for w in g.predecessors(v)]
-        g.node[v]['o_path'] = sum(odds)
+        g.node[v]['o_path'] = fsum(odds)
         return g.node[v]['o_path']
 
 
@@ -206,7 +220,7 @@ def path_prob(g, v=None):
 def nlo(p):
     if (p > 1) or (p < 0):
         raise ValueError("bad p: {}".format(p))
-    return -np.log(p / (1. - p))
+    return -np.log(safe_odds(p))
 
 def bdy_edge(crd, vertices, bdy_1, bdy_2, beliefs, layout, stab_type):
     """
@@ -260,70 +274,78 @@ def input_beliefs(sim, err, bp_rounds=None):
     
     return beliefs(tg)
 
-def bp_graphs(sim, err, bp_rounds=None, precision=4):
+def bp_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
     """
     Create a pair of graphs to use in independent x/z matching by:
      - running BP on the Tanner graph
      - message-passing to create edge weights based on min-len SAWs
     """
-    layout = sim.layout
-    blfs = input_beliefs(sim, err, bp_rounds)
-    x_synd, z_synd = sim.syndromes(err)
-    
-    if sim.boundary_conditions == 'closed':
-        x_bdy_1, x_bdy_2, z_bdy_1, z_bdy_2 = None, None, None, None
-    else:
-        x_bdy_1 = layout.boundary['x_left']
-        x_bdy_2 = layout.boundary['x_right']
-        z_bdy_1 = layout.boundary['z_top']
-        z_bdy_2 = layout.boundary['z_bot']
+    try:
+        layout = sim.layout
 
-    x_verts, z_verts = layout.x_ancs(), layout.z_ancs()
-
-    # There seriously has to be a better way to do this
-    svb1b2t = [(x_synd, x_verts, x_bdy_1, x_bdy_2, 'X'),
-                (z_synd, z_verts, z_bdy_1, z_bdy_2, 'Z')]
-    out_graphs = []
-    for synd, vs, bdy_1, bdy_2, tp in svb1b2t:
-        graph = nx.Graph()
+        if beliefs is None:
+            blfs = input_beliefs(sim, err, bp_rounds)
+        else:
+            blfs = beliefs
         
-        # ancilla-to-boundary edges
-        if bdy_1 is not None:
-            for pt in synd:
-                crd = layout.map.inv[pt]
-                wt, c_pt = bdy_edge(crd, vs, bdy_1, bdy_2,
-                                    blfs, layout, tp)
+        x_synd, z_synd = sim.syndromes(err)
+        
+        if sim.boundary_conditions == 'closed':
+            x_bdy_1, x_bdy_2, z_bdy_1, z_bdy_2 = None, None, None, None
+        else:
+            x_bdy_1 = layout.boundary['x_left']
+            x_bdy_2 = layout.boundary['x_right']
+            z_bdy_1 = layout.boundary['z_top']
+            z_bdy_2 = layout.boundary['z_bot']
 
-                # NX does MAXIMUM-weight matching ----->------->----v
-                graph.add_edge(pt, (pt, 'b'), close_pt=c_pt, weight=-wt)
+        x_verts, z_verts = layout.x_ancs(), layout.z_ancs()
 
-        # pair edges
-        if bdy_1 is not None:
+        # There seriously has to be a better way to do this
+        svb1b2t = [(x_synd, x_verts, x_bdy_1, x_bdy_2, 'X'),
+                    (z_synd, z_verts, z_bdy_1, z_bdy_2, 'Z')]
+        out_graphs = []
+        for synd, vs, bdy_1, bdy_2, tp in svb1b2t:
+            graph = nx.Graph()
+            
+            # ancilla-to-boundary edges
+            if bdy_1 is not None:
+                for pt in synd:
+                    crd = layout.map.inv[pt]
+                    wt, c_pt = bdy_edge(crd, vs, bdy_1, bdy_2,
+                                        blfs, layout, tp)
+
+                    # NX does MAXIMUM-weight matching ----->------->----v
+                    graph.add_edge(pt, (pt, 'b'), close_pt=c_pt, weight=-wt)
+
+            # pair edges
+            if bdy_1 is not None:
+                for p, q in it.combinations(synd, r=2):
+                    # boundary-boundary
+                    graph.add_edge((p, 'b'), (q, 'b'), weight=0.)
+            
             for p, q in it.combinations(synd, r=2):
-                # boundary-boundary
-                graph.add_edge((p, 'b'), (q, 'b'), weight=0.)
+                # bulk
+                c0, c1 = layout.map.inv[p], layout.map.inv[q]
+                wt = bulk_wt(c0, c1, vs, blfs, layout, tp)
+                # MAXIMUM-weight matching->-v
+                graph.add_edge(p, q, weight=-wt)
+
+            # Temporary: Clean up edge weights for comparison to integer
+            # if list(graph.edges()):
+            #     min_wt = min([edge[2]['weight'] for edge in graph.edges(data=True)])
+            #     for u, v in graph.edges():
+            #         graph[u][v]['weight'] += min_wt
+            #     nrm = min(filter(lambda x: x !=0,
+            #         [edge[2]['weight'] for edge in graph.edges(data=True)]))
+            #     for u, v in graph.edges():
+            #         graph[u][v]['weight'] /= nrm    
+
+            out_graphs.append(graph.copy())
         
-        for p, q in it.combinations(synd, r=2):
-            # bulk
-            c0, c1 = layout.map.inv[p], layout.map.inv[q]
-            wt = bulk_wt(c0, c1, vs, blfs, layout, tp)
-            # MAXIMUM-weight matching->-v
-            graph.add_edge(p, q, weight=-wt)
-
-        # Temporary: Clean up edge weights for comparison to integer
-        # if list(graph.edges()):
-        #     min_wt = min([edge[2]['weight'] for edge in graph.edges(data=True)])
-        #     for u, v in graph.edges():
-        #         graph[u][v]['weight'] += min_wt
-        #     nrm = min(filter(lambda x: x !=0,
-        #         [edge[2]['weight'] for edge in graph.edges(data=True)]))
-        #     for u, v in graph.edges():
-        #         graph[u][v]['weight'] /= nrm    
-
-        out_graphs.append(graph.copy())
-    
-    return tuple(out_graphs)
-
+        return tuple(out_graphs)
+    except:
+        print err
+        raise
 #-------------------------belief propagation, etc.--------------------#
 _order = {'Z': 1, 'X': 2, 'Y': 3}
 def str_sprt_to_tpl(str_sprt, sprt):
@@ -452,6 +474,7 @@ def check_to_qubit(g):
         for b in bs:
             g.node[v]['mcq'][sprt[b]] = mcq[b, :] / sum(mcq[b, :])
 
+# @profile
 def qubit_to_check(g):
     for v in _bits(g):
         # product over neighbours not c

@@ -39,6 +39,8 @@ from sys import version_info
 if version_info.major == 3:
     from functools import reduce
 
+_pauli_key = [None, sp.Z, sp.X, sp.Y] # trust me
+
 class Sim2D(object):
     """
     This is a pretty bare-bones simulation of the 2D rotated surface
@@ -49,7 +51,6 @@ class Sim2D(object):
         """
         I set optional BC here, for now you can set 'rotated' or
         'closed'.
-        'open' might be coming in the future, but probably not.
         """
         #user-input properties
         self.dx = dx
@@ -201,9 +202,9 @@ class Sim2D(object):
             for u,v in graph.edges():
                 uid = int(node2id[u])
                 vid = int(node2id[v])
-                wt = -int( graph[u][v]['weight']) # weights from NetworkX
+                wt = -int(graph[u][v]['weight']) # weights from NetworkX
                 # print('weight of edge[{0}][{1}] = {2}'.format( uid, vid, wt) )
-                edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt;
+                edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
                 e += 1
 
             # print('printing edges before calling blossom')
@@ -316,7 +317,7 @@ class Sim2D(object):
             node_num = 2 * len(syndrome)
             edge_num = len(syndrome)
             for v1, v2 in it.combinations(syndrome, 2):
-                edge_num = edge_num + 2; #TODO replace loop with n*(n-1)
+                edge_num = edge_num + 2 #TODO replace loop with n*(n-1)
             nodes = []
             for s in syndrome:
                 n = str(s) + ', b'
@@ -420,6 +421,13 @@ class Sim2D(object):
 
         return matchups if return_matching else product(pauli_lst)
 
+    def beliefs(self, err, bp_rounds=None):
+        """
+        Produces propagated beliefs for a simulation, which we can use
+        in bp_correction or else in run. 
+        """
+        return mw.input_beliefs(self, err, bp_rounds)
+    
     def logical_error(self, error, x_corr, z_corr):
         """
         Given an error and a correction, multiplies them and returns a
@@ -482,9 +490,12 @@ class Sim2D(object):
             err = self.random_error()
             x_synd, z_synd = self.syndromes(err)
             if bp:
-                x_graph, z_graph = mw.bp_graphs(self, err, bp_rounds=None)
-                x_corr = self.correction(x_graph, 'Z')
-                z_corr = self.correction(z_graph, 'X')
+                blfs = self.beliefs(err)
+                x_corr, z_corr = bp_correction(blfs)
+                if self.syndromes(x_corr * z_corr) != self.syndromes(err):
+                    x_graph, z_graph = mw.bp_graphs(self, err, beliefs=blfs)
+                    x_corr = self.correction(x_graph, 'Z')
+                    z_corr = self.correction(z_graph, 'X')
             else:            
                 if self.useBlossom:
                     # without networkx interface (only with blossom)
@@ -665,5 +676,22 @@ def corners(crd_0, crd_1):
     vs = [( int(( d + c - b + a ) / 2), int(( d + c + b - a ) / 2 )),
         ( int(( d - c - b - a ) / -2), int(( -d + c - b - a ) / -2 ))]
     return vs
+
+def bp_correction(blfs):
+    """
+    Runs belief propagation and takes the argmax of the resulting
+    beliefs. 
+    If the syndromes of the actual error and the BP prediction
+    match, we return a set of corrections (X and Z to conform with
+    the rest of the simulation). 
+    If not, we return None, so the calling method can pass the beliefs 
+    """
+    p_dct = {key: np.argmax(val) for key, val in blfs.items()}
+    p_dct = {key: val for key, val in p_dct.items() if val != 0}
+    pauli = sp.I
+    for idx in range(1, 4):
+        pauli *= _pauli_key[idx]([k for k in p_dct if p_dct[k] == idx])
+
+    return pauli.xz_pair()
 
 #---------------------------------------------------------------------#
