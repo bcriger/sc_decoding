@@ -1,12 +1,13 @@
 import decoding_2d as dc
 import itertools as it
-# from line_profiler import LineProfiler
+from line_profiler import LineProfiler
 from math import fsum
 import networkx as nx
 import numpy as np
 from operator import mul, add
 from scipy.special import binom
 import sparse_pauli as sp
+from functools import reduce
 
 shifts = [(1, -1), (-1, -1), (1, 1), (-1, 1)] # data to ancilla
 big_shifts = [(2, -2), (-2, -2), (2, 2), (-2, 2)] # ancilla to ancilla
@@ -262,8 +263,11 @@ def input_beliefs(sim, err, bp_rounds=None):
     bp_rounds defaults to 5*d.
     """
     layout = sim.layout
-    stabs = dict(reduce(add, [layout.stabilisers()[_].items()
-                                for _ in 'XZ']))
+    # TODO iashraf
+    # stabs = dict(reduce(add, [layout.stabilisers()[_].items() for _ in 'XZ']))
+    stabs = dict( layout.stabilisers()['X'].items() )
+    stabs.update( layout.stabilisers()['Z'].items() )
+
     mdl = sim.error_model.p_arr
     tg = tanner_graph(stabs, err, mdl) # it only uses syndromes
     
@@ -344,7 +348,7 @@ def bp_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
         
         return tuple(out_graphs)
     except:
-        print err
+        print(err)
         raise
 #-------------------------belief propagation, etc.--------------------#
 _order = {'Z': 1, 'X': 2, 'Y': 3}
@@ -367,7 +371,6 @@ def propagate_beliefs(g, n_steps):
     """
 
     for _ in range(n_steps):
-
         check_to_qubit(g)
         qubit_to_check(g)
 
@@ -404,18 +407,170 @@ _lpg_wrap = {
                 ('ZZ', 1):   tpl_lst(_zz_acom, 2)
             }
 
+#################################
+USE_CLIB = 1
+from decoding_utils import check_funcs_path, cdef_str_check_funcs
+from cffi import FFI
+
+check_funcs_ffi = FFI()
+check_funcs_lib = check_funcs_ffi.dlopen(check_funcs_path)
+check_funcs_ffi.cdef(cdef_str_check_funcs)
+cmqc = check_funcs_ffi.new('float[4][4]')
+cmcq = check_funcs_ffi.new('float[4][4]')
+
+
 # profile = LineProfiler()
 # @profile
 def check_to_qubit(g):
-    for v in _checks(g): 
-        check = g.node[v]['check']
+    for v in _checks(g):
         synd = g.node[v]['syndrome']
+        check = g.node[v]['check']
+        sprt = check[1]
+        sprt_len = len(sprt)
+        bs = range(sprt_len)
+
+        mqc = np.array([g.node[q]['mqc'][v] for q in sprt])
+        mcq = np.zeros_like(g.node[v]['mcq'].values())
+
+        mqc_len = len(mqc[0])
+        mcq_len = mqc_len
+
+        # print('mcq_len : {}'.format(mcq_len) )
+        # print('sprt_len : {}'.format(sprt_len) )
+        # print('mqc_len : {}'.format(mqc_len) )
+        # print('bs : {}'.format(bs) )
+
+        # factor sum to avoid excess multiplications
+        if check[0] == 'XXXX':
+            if USE_CLIB:
+                for i in range(mqc_len):
+                    for j in range(mqc_len):
+                        cmqc[i][j] = mqc[i][j]
+
+                retVal = check_funcs_lib.check0(cmcq, cmqc, mcq_len, sprt_len, synd)
+
+                for i in range(mcq_len):
+                    for j in range(mcq_len):
+                        mcq[i][j] = cmcq[i][j]
+            else:                  
+                bs = range(sprt_len)
+                for b in bs:
+                    lst = [_ for _ in bs if _ != b]
+                    ix1, ix2, ix3 = [mqc[_][0] + mqc[_][2] for _ in lst]
+                    yz1, yz2, yz3 = [mqc[_][3] + mqc[_][1] for _ in lst]
+                    odd_2 = yz2 * ix3 + ix2 * yz3
+                    even_2 = yz2 * yz3 + ix2 * ix3
+                    odd_3 = yz1 * even_2 + ix1 * odd_2
+                    even_3 = ix1 * even_2 + yz1 * odd_2
+                    mcq[b, 0] += odd_3 if synd == 1 else even_3
+                    mcq[b, 2] += odd_3 if synd == 1 else even_3
+                    mcq[b, 1] += even_3 if synd == 1 else odd_3
+                    mcq[b, 3] += even_3 if synd == 1 else odd_3
+
+        elif check[0] == 'ZZZZ':
+            if USE_CLIB:
+                for i in range(mqc_len):
+                    for j in range(mqc_len):
+                        cmqc[i][j] = mqc[i][j]
+
+                retVal = check_funcs_lib.check1(cmcq, cmqc, mcq_len, sprt_len, synd)
+
+                for i in range(mcq_len):
+                    for j in range(mcq_len):
+                        mcq[i][j] = cmcq[i][j]
+            else:
+                for b in bs:
+                    lst = [_ for _ in bs if _ != b]
+                    iz1, iz2, iz3 = [mqc[_][0] + mqc[_][1] for _ in lst]
+                    xy1, xy2, xy3 = [mqc[_][2] + mqc[_][3] for _ in lst]
+                    odd_2 = xy2 * iz3 + iz2 * xy3
+                    even_2 = xy2 * xy3 + iz2 * iz3
+                    odd_3 = xy1 * even_2 + iz1 * odd_2
+                    even_3 = iz1 * even_2 + xy1 * odd_2
+                    mcq[b, 0] += odd_3 if synd == 1 else even_3
+                    mcq[b, 2] += even_3 if synd == 1 else odd_3
+                    mcq[b, 1] += odd_3 if synd == 1 else even_3
+                    mcq[b, 3] += even_3 if synd == 1 else odd_3
+
+        elif check[0] == 'XX':
+            if USE_CLIB:
+                for i in range(sprt_len):
+                    for j in range(mqc_len):
+                        cmqc[i][j] = mqc[i][j]
+
+                retVal = check_funcs_lib.check2(cmcq, cmqc, mcq_len, sprt_len, synd)
+
+                for i in range(sprt_len):
+                    for j in range(mcq_len):
+                        mcq[i][j] = cmcq[i][j]
+            else:
+                for b in bs:
+                    othr = [_ for _ in bs if _ != b][0]
+                    ix = mqc[othr][0] + mqc[othr][2]
+                    yz = mqc[othr][3] + mqc[othr][1]
+                    mcq[b, 0] += ix if synd == 0 else yz
+                    mcq[b, 1] += yz if synd == 0 else ix
+                    mcq[b, 2] += ix if synd == 0 else yz
+                    mcq[b, 3] += yz if synd == 0 else ix
+
+        elif check[0] == 'ZZ':
+            if USE_CLIB:
+                for i in range(sprt_len):
+                    for j in range(mqc_len):
+                        cmqc[i][j] = mqc[i][j]
+
+                retVal = check_funcs_lib.check3(cmcq, cmqc, mcq_len, sprt_len, synd)
+
+                for i in range(sprt_len):
+                    for j in range(mcq_len):
+                        mcq[i][j] = cmcq[i][j]
+            else:
+                for b in bs:
+                    othr = [_ for _ in bs if _ != b][0]
+                    iz = mqc[othr][0] + mqc[othr][1]
+                    xy = mqc[othr][2] + mqc[othr][3]
+                    mcq[b, 0] += iz if synd == 0 else xy
+                    mcq[b, 1] += iz if synd == 0 else xy
+                    mcq[b, 2] += xy if synd == 0 else iz
+                    mcq[b, 3] += xy if synd == 0 else iz
+        else:
+            # sum over local Pauli group
+            lpg = _lpg_wrap[(check[0], synd)]
+            
+            for elem in [zip(bs, _) for _ in lpg]:
+                summand = reduce(mul, (mqc[tpl] for tpl in elem)) # slow
+                for tpl in elem:
+                    mcq[tpl] += summand / mqc[tpl]
+        
+        # normalize
+        if USE_CLIB:
+            for i in range(sprt_len):
+                for j in range(mcq_len):
+                    cmcq[i][j] = mcq[i][j]
+
+            retVal = check_funcs_lib.normalize(cmcq, mcq_len, sprt_len)
+
+            for i in range(sprt_len):
+                for j in range(mcq_len):
+                    mcq[i][j] = cmcq[i][j]
+        else:
+            for b in bs:
+                mcq[b, :] = mcq[b, :] / sum(mcq[b, :])
+
+        for b in bs:
+            g.node[v]['mcq'][sprt[b]] = mcq[b, :]
+
+def check_to_qubit_orig(g):
+    for v in _checks(g):
+        synd = g.node[v]['syndrome']
+
+        check = g.node[v]['check']
         sprt = check[1]
         bs = range(len(sprt))
-        
+
         mqc = np.array([g.node[q]['mqc'][v] for q in sprt])
-        
         mcq = np.zeros_like(g.node[v]['mcq'].values())
+
         # factor sum to avoid excess multiplications
         if check[0] == 'XXXX':
             for b in bs:
