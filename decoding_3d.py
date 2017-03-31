@@ -5,7 +5,8 @@ from collections import Iterable
 from decoding_2d import pair_dist
 from decoding_utils import blossom_path, cdef_str
 import error_model as em
-from itertools import combinations
+import itertools as it
+from matched_weights import big_shifts as SHIFTS
 import networkx as nx
 from operator import mul
 import progressbar as pb
@@ -120,7 +121,7 @@ class Sim3D(object):
 
         #ancillas (for restricting error to data bits)
         ancs = {self.layout.map[anc]
-                for anc in sum(self.layout.ancillas.values(), ())}
+                for anc in sum(self.layout.ancillas.values(), [])}
         err_hist = []
         synd_hist = {'X': [], 'Z': []}
         #perfect (quiescent state) initialization
@@ -231,7 +232,8 @@ class Sim3D(object):
 
         return anticom_dict[ ( x_com, z_com ) ]
 
-    def run(self, n_trials, progress=True, metric=None, bdy_info=None, final_perfect_rnd=True):
+    def run(self, n_trials, progress=True, metric=None, bdy_info=None,
+                final_perfect_rnd=True):
         """
         Repeats the following cycle `n_trials` times:
          + Generate a list of 'n_meas' cumulative errors
@@ -241,8 +243,12 @@ class Sim3D(object):
          + check for a logical error by testing anticommutation with
            the logical paulis
         """
-        bar = pb.ProgressBar()
-        trials = bar(range(n_trials)) if progress else range(n_trials)
+        if progress:
+            bar = pb.ProgressBar()
+            trials = bar(range(n_trials))
+        else:
+            trials = range(n_trials)
+        
         for trial in trials:
             err_hist, synd_hist = self.history(final_perfect_rnd)
             corr = self.correction(synd_hist, metric, bdy_info)
@@ -250,7 +256,7 @@ class Sim3D(object):
             self.errors[log] += 1
         pass
 
-    def manhattan_metric(self, flip_a, flip_b):
+    def manhattan_metric(self, flip_a, flip_b, diag=False):
         """
         Mostly for testing/demonstration, returns a function that takes
         you straight from flip _indices_ to edge weights for the 
@@ -262,6 +268,9 @@ class Sim3D(object):
         perfect, I'm only going to use paths "timelike between flips",
         and I won't give a pair a weight by taking each syndrome flip 
         out to the time boundary, just the space boundaries.   
+        
+        If diag is set to True, I'm going to take all diagonal edges to
+        be weight-one.
 
         """
         n = self.layout.n
@@ -276,6 +285,9 @@ class Sim3D(object):
 
         # vertical
         vert_dist = abs(vert_a - vert_b)
+
+        if diag:
+            vert_dist = max(0, vert_dist - horz_dist)
 
         return -(horz_dist + vert_dist)
 
@@ -298,7 +310,7 @@ class Sim3D(object):
 
         return -min_dist, close_pt
 
-#-----------------------convenience functions-------------------------#
+#---------------------------error models------------------------------#
 def pq_model(extractor, p, q):
     """
     Produces an error model list for a given syndrome extractor which
@@ -361,6 +373,127 @@ def fowler_model(extractor, p):
                     ])
 
     return err_list
+#---------------------------------------------------------------------#
+
+#-----------------------convenience functions-------------------------#
+
+def last_layers(sim, p):
+    """
+    produces a pair of metric layers that have data errors occuring in
+    the final round with probability p, and measurement errors with the
+    same probability.
+    """
+    w_f = cm.neg_log_odds([p]) # rough guess at measurement error prob.
+    layout = sim.layout
+    x_vs_2d, z_vs_2d = layout.x_ancs(), layout.z_ancs()
+
+    x_es, z_es = [], []
+    x_ws, z_ws = [], []
+
+    for vs, es, ws in [(x_vs_2d, x_es, x_ws), (z_vs_2d, z_es, z_ws)]:
+        for v in vs:
+            es.append((v + (0,), v + (1,)))
+            ws.append(w_f)
+        for pr in it.product(vs, repeat=2):
+            if (pr[1][0] - pr[0][0], pr[1][1] - pr[0][1]) in SHIFTS:
+                es.append((pr[0] + (0,), pr[1] + (0,)))
+                ws.append(w_f)
+    
+    x_vs = [v + (0,) for v in x_vs_2d] + [v + (1,) for v in x_vs_2d]
+    z_vs = [v + (0,) for v in z_vs_2d] + [v + (1,) for v in z_vs_2d]
+
+    return [x_vs, x_es, x_ws], [z_vs, z_es, z_ws]
+
+def nest_metric(sim, p, final_perfect_rnd=True):
+    """
+    Produces a metric that will map flat flips to a distance, given a
+    Sim3D object and an error probability p, to be used in a
+    Fowler-esque model.
+    """
+    if not final_perfect_rnd:
+        raise NotImplementedError("This function assumes a final"
+                                    "perfect round.")
+    t = sim.n_meas
+    layout = sim.layout
+    extractor = layout.extractor()
+    n = layout.n
+
+    nest_graph = nx.Graph()
+
+    # most of metric determined by error model
+    f_ps, _ = cm.fault_list(extractor, p)
+
+    xm, zm = cm.css_metrics(f_ps, extractor, layout)
+
+    xm, zm = map(filter_bulk, (xm, zm))
+
+    # have to create last layer here
+    x_ll, z_ll = last_layers(sim, p)
+
+    x_stack = cm.stack_metrics([xm] * t + [x_ll])
+    z_stack = cm.stack_metrics([zm] * t + [z_ll])
+    # flatten crds
+    vs = x_stack[0] + z_stack[0]
+    idx = {v: layout.map[v[:2]] + v[2] * n for v in vs}
+
+    nest_graph.add_weighted_edges_from([(idx[e[0]], idx[e[1]], w)
+                                        for e, w in zip(x_stack[1], x_stack[2])])
+
+    nest_graph.add_weighted_edges_from([(idx[e[0]], idx[e[1]], w) for e, w in
+                                        zip(z_stack[1], z_stack[2])])
+
+    path_lengths = dict(nx.all_pairs_dijkstra_path_length(nest_graph))
+
+    def metric_function(flp_a, flp_b):
+        return -path_lengths[flp_a][flp_b] # max-weight PM
+
+    return metric_function
+
+def nest_bdy_tpl(sim, p):
+    """
+    Temporary implementation for d = 3 only, which doesn't require
+    path-finding in order to get to the boundary.
+    Every syndrome can be taken to its close point in one step.
+    """
+    close_pt_dct = {(0, 2): (2, 0), (2, 2): (0, 0),
+                    (2, 4): (0, 6), (2, 6): (0, 4),
+                    (4, 0): (6, 2), (4, 2): (6, 0),
+                    (4, 4): (6, 6), (6, 4): (4, 6)}
+    
+    # distance determined by circuit_metric
+    layout = sim.layout
+    crds = layout.map.inv
+    n = layout.n
+    extractor = layout.extractor()
+    f_ps, _ = cm.fault_list(extractor, p)
+    
+    xm, zm = cm.css_metrics(f_ps, extractor, layout)
+    edges = xm[1] + zm[1]
+    weights = xm[2] + zm[2]
+    def bdy_tpl_func(flp):
+        crd = crds[flp % n]
+        weight_dx = edges.index(((crd + (0,)), ('B', ) + crd + (0,)))
+        return -weights[weight_dx], close_pt_dct[crd]
+
+    return bdy_tpl_func
+
+def filter_bulk(metric):
+    """
+    Gets rid of all those nasty boundary vertices so that metric and
+    bdy_info can be generated separately.
+    """
+    lil_metric = [[], [], []]
+    for dx in range(len(metric[0])):
+        if 'B' not in metric[0][dx]:
+            lil_metric[0].append(metric[0][dx])
+
+    for dx in range(len(metric[1])):
+        if all(['B' not in v for v in metric[1][dx]]):
+            lil_metric[1].append(metric[1][dx])
+            lil_metric[2].append(metric[2][dx])
+
+    return lil_metric
+
 
 def flat_flips(synds, n):
     flip_list = {'X': [], 'Z': []}
@@ -385,8 +518,8 @@ def mwpm(verts, metric, bdy_info, use_blossom, ffi=None, blossom=None):
     """
     graph = flip_graph(verts, metric, bdy_info)
     if use_blossom:
-        node_num = len(graph.nodes());
-        edge_num = len(graph.edges());
+        node_num = nx.number_of_nodes(graph)
+        edge_num = nx.number_of_edges(graph)
         edges = ffi.new('Edge[%d]' % (edge_num) )
         cmatching = ffi.new('int[%d]' % (2*node_num) )
 
@@ -399,7 +532,7 @@ def mwpm(verts, metric, bdy_info, use_blossom, ffi=None, blossom=None):
             vid = int(node2id[v])
             wt = -int( graph[u][v]['weight'])
             # print('weight of edge[{0}][{1}] = {2}'.format( uid, vid, wt) )
-            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt;
+            edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
             e += 1
 
         retVal = blossom.Init()
@@ -450,18 +583,18 @@ def flip_graph(verts, metric, bdy_info, fmt='qec', n=None, crd_dct=None):
 
     if fmt == 'dbg':
         main_es = [(xyt(u), xyt(v), metric(u, v)) 
-                        for u, v in combinations(verts, r=2)]
+                        for u, v in it.combinations(verts, r=2)]
         bdy_es = [(xyt(u), xyt(v), bdy_info(u)[0])
                     for u, v in zip(verts, bdy_verts)]
         zero_es = [ (xyt(u), xyt(v), 0)
-                    for u, v in combinations(bdy_verts, r=2)]
+                    for u, v in it.combinations(bdy_verts, r=2)]
     else:
         main_es = [(u, v, metric(u, v)) 
-                        for u, v in combinations(verts, r=2)]
+                        for u, v in it.combinations(verts, r=2)]
         bdy_es = [(u, v, bdy_info(u)[0])
                     for u, v in zip(verts, bdy_verts)]
         zero_es = [ (u, v, 0)
-                    for u, v in combinations(bdy_verts, r=2)]    
+                    for u, v in it.combinations(bdy_verts, r=2)]    
     
     graph = nx.Graph()
     graph.add_weighted_edges_from(main_es + bdy_es + zero_es)
