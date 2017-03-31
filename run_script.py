@@ -63,7 +63,7 @@ def entropic_dist(l, p, precision=4):
 
     return dist_func
 
-def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz', bc='rotated'):
+def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz', bc='rotated', bp=False):
     """
     Makes a bunch of simulation objects and runs them, based on input
     parameters. 
@@ -85,7 +85,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                 if bc == 'open':
                     current_sim = dc2.Sim2D(dist, dist+1, err, useBlossom=False, boundary_conditions=bc)
                 else:
-                    current_sim = dc2.Sim2D(dist, dist, err, useBlossom=True, boundary_conditions=bc)
+                    current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
             elif sim_type == 'circ':
@@ -96,7 +96,7 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                     [[current_sim.layout.map[_]] for _ in current_sim.layout.datas])
                 dist_func = fancy_dist(dist, 0.66666667 * err)
 
-            current_sim.run(n_trials, progress=False)
+            current_sim.run(n_trials, progress=False, bp=bp)
             # current_sim.run(n_trials, progress=False, dist_func=dist_func)
             failures.append(current_sim.errors)
         output_dict.update({'failures ' + str(dist) : failures})
@@ -114,8 +114,8 @@ if __name__ == '__main__':
     n_trials = int(argv[5])
     flnm = argv[6]
     sim_type = argv[7] if len(argv) > 7 else 'iidxz'
-    bc = 'closed'
-    run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type, bc)
-    # run_corr_dep(err_lo, err_hi, n_points, dists, n_trials, flnm)
+    bc = 'rotated'
+    bp = True
+    run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type, bc, bp)
 
 #---------------------------------------------------------------------#

@@ -6,6 +6,7 @@ import networkx as nx
 import numpy as np
 from operator import mul, add
 from scipy.special import binom
+from scipy.stats import entropy
 import sparse_pauli as sp
 from functools import reduce
 from timeit import default_timer as timer
@@ -175,20 +176,6 @@ def record_beliefs(beliefs, g, layout, stab_type):
 
     pass
 
-def safe_odds(p):
-    """
-    If I use a raw odds function, I get infs/nans when an input
-    probability is too close to 1 or 0.
-    Here, I 
-    """
-    if p < 1. - 10**-16:
-        if p > 10 **-16:
-            return p / (1. - p)
-        else:
-            return p
-    else:
-        return (1. - 10.**-16) * 10.**16
-
 def path_prob(g, v=None):
     """
     For some reason, I don't think the function `path_prob' is
@@ -218,6 +205,22 @@ def path_prob(g, v=None):
 #---------------------------------------------------------------------#
 
 #----------------------edge weights-----------------------------------#
+
+def safe_odds(p):
+    """
+    If I use a raw odds function, I get infs/nans when an input
+    probability is too close to 1 or 0.
+    Here, I clip the edges of the domain, returning a high finite
+    value instead of inf, and using the low-p approximation when p is 
+    small.
+    """
+    if p < 1. - 10**-16:
+        if p > 10 **-16:
+            return p / (1. - p)
+        else:
+            return p
+    else:
+        return 999999999999999.
 
 def nlo(p):
     if (p > 1) or (p < 0):
@@ -259,9 +262,11 @@ def bulk_wt(crd_0, crd_1, vertices, beliefs, layout, stab_type):
     
     return nlo(p)
 
+#---------------------------------------------------------------------#
+
 def input_beliefs(sim, err, bp_rounds=None):
     """
-    bp_rounds defaults to 5*d.
+    bp_rounds defaults to d.
     """
     layout = sim.layout
     # TODO iashraf
@@ -273,7 +278,7 @@ def input_beliefs(sim, err, bp_rounds=None):
     tg = tanner_graph(stabs, err, mdl) # it only uses syndromes
     
     if bp_rounds is None:
-        bp_rounds = 5 * max(sim.dx, sim.dy)
+        bp_rounds = max(sim.dx, sim.dy, 10)
 
     propagate_beliefs(tg, bp_rounds)
     
@@ -818,5 +823,44 @@ def nn_edge_switch(crds):
     operation before doing the inversion trick. 
     """
     return ((crds[0][0], crds[1][1]), (crds[1][0], crds[0][1]))
+
+def belief_convergence(tg, total_rounds):
+    """
+    I'd like to see how fast BP converges.
+    I'm going to plot the KL entropy between consecutive rounds of BP, 
+    maybe try to fit an exponential.
+    """
+    diffs = []
+    curr_dist = beliefs(tg).values()
+    for _ in xrange(total_rounds):
+        propagate_beliefs(tg, 1)
+        new_dist = beliefs(tg).values()
+        av_entropy = np.mean([entropy(p, q) for p, q in zip(new_dist, curr_dist)])
+        diffs.append(av_entropy)
+        curr_dist = new_dist
+    
+    return diffs
+
+def bc_sim(sim, total_rounds, n_trials):
+    """
+    Generates random errors and corresponding Tanner graphs from a
+    decoding_2d.Sim2D object, and produces a list of log'd convergences
+    from belief_convergence.
+    """
+    diff_list = []
+    layout = sim.layout
+    
+    stab_dct = layout.stabilisers()
+    stabs = stab_dct['X']
+    stabs.update(stab_dct['Z'])
+
+    mdl = sim.error_model.p_arr
+
+    for _ in xrange(n_trials):
+        err = sim.random_error()
+        tg = tanner_graph(stabs, err, mdl)
+        diff_list.append(belief_convergence(tg, total_rounds))
+
+    return diff_list
 
 #---------------------------------------------------------------------#
