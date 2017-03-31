@@ -3,8 +3,6 @@
 #include <vector>
 using namespace std;
 
-int node_num, edge_num;
-
 extern "C" int check0( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd)
 {
     for(size_t i=0; i<mcq_len; ++i)
@@ -37,6 +35,7 @@ extern "C" int check0( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt
 		cmcq[b][3] += (synd==1?even_3:odd_3);
     }
 
+    normalize(cmcq,mcq_len,sprt_len);
 	return 0;
 }
 
@@ -72,6 +71,7 @@ extern "C" int check1( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt
 		cmcq[b][3] += (synd==1?even_3:odd_3);
     }
 
+	normalize(cmcq,mcq_len,sprt_len);
 	return 0;
 }
 
@@ -100,6 +100,7 @@ extern "C" int check2( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt
 		cmcq[b][3] += (synd==0?yz:ix);
     }
 
+	normalize(cmcq,mcq_len,sprt_len);
 	return 0;
 }
 
@@ -128,6 +129,7 @@ extern "C" int check3( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt
 		cmcq[b][3] += (synd==0?xy:iz);
     }
 
+    normalize(cmcq,mcq_len,sprt_len);
 	return 0;
 }
 

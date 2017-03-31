@@ -8,6 +8,7 @@ from operator import mul, add
 from scipy.special import binom
 import sparse_pauli as sp
 from functools import reduce
+from timeit import default_timer as timer
 
 shifts = [(1, -1), (-1, -1), (1, 1), (-1, 1)] # data to ancilla
 big_shifts = [(2, -2), (-2, -2), (2, 2), (-2, 2)] # ancilla to ancilla
@@ -369,10 +370,16 @@ def propagate_beliefs(g, n_steps):
     To get decent marginal probabilities to feed in to multi-path
     matching, I'm going to try straight-forward Poulin/Chung BP. 
     """
-
+    totaltime = 0.0
     for _ in range(n_steps):
+        start = timer()
         check_to_qubit(g)
+        # check_to_qubit_orig(g)
+        end = timer()
         qubit_to_check(g)
+        totaltime += (end-start)
+    print("Execution check_to_qubit per step : {0} ms".format(totaltime/n_steps*1e3))
+
 
 # This big block of variables is meant to pre-compute a lot of the
 # stuff that goes into check_to_qubit for surface codes at import-time.
@@ -408,7 +415,7 @@ _lpg_wrap = {
             }
 
 #################################
-USE_CLIB = 1
+USE_CLIB = 0
 from decoding_utils import check_funcs_path, cdef_str_check_funcs
 from cffi import FFI
 
@@ -434,11 +441,6 @@ def check_to_qubit(g):
 
         mqc_len = len(mqc[0])
         mcq_len = mqc_len
-
-        # print('mcq_len : {}'.format(mcq_len) )
-        # print('sprt_len : {}'.format(sprt_len) )
-        # print('mqc_len : {}'.format(mqc_len) )
-        # print('bs : {}'.format(bs) )
 
         # factor sum to avoid excess multiplications
         if check[0] == 'XXXX':
@@ -541,22 +543,17 @@ def check_to_qubit(g):
                 summand = reduce(mul, (mqc[tpl] for tpl in elem)) # slow
                 for tpl in elem:
                     mcq[tpl] += summand / mqc[tpl]
+
+            #normalization part
+            for b in bs:
+                mcq[b, :] = mcq[b, :] / sum(mcq[b, :])
         
         # normalize
-        if USE_CLIB:
-            for i in range(sprt_len):
-                for j in range(mcq_len):
-                    cmcq[i][j] = mcq[i][j]
-
-            retVal = check_funcs_lib.normalize(cmcq, mcq_len, sprt_len)
-
-            for i in range(sprt_len):
-                for j in range(mcq_len):
-                    mcq[i][j] = cmcq[i][j]
-        else:
+        if not USE_CLIB: # CLIB normalizes internally to save overhead
             for b in bs:
                 mcq[b, :] = mcq[b, :] / sum(mcq[b, :])
 
+        # save result back to graph
         for b in bs:
             g.node[v]['mcq'][sprt[b]] = mcq[b, :]
 
