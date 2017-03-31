@@ -2,7 +2,7 @@ import numpy as np
 from scipy.special import binom
 import decoding_2d as dc
 import itertools as it
-from line_profiler import LineProfiler
+# from line_profiler import LineProfiler
 import networkx as nx
 from operator import mul, add
 import sparse_pauli as sp
