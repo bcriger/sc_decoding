@@ -370,15 +370,21 @@ def propagate_beliefs(g, n_steps):
     To get decent marginal probabilities to feed in to multi-path
     matching, I'm going to try straight-forward Poulin/Chung BP. 
     """
-    totaltime = 0.0
+    # totaltime = 0.0
     for _ in range(n_steps):
-        start = timer()
+
+        # start = timer()
         check_to_qubit(g)
         # check_to_qubit_orig(g)
-        end = timer()
-        qubit_to_check(g)
-        totaltime += (end-start)
-    print("Execution check_to_qubit per step : {0} ms".format(totaltime/n_steps*1e3))
+        # end = timer()
+
+        # start = timer()
+        # qubit_to_check(g)
+        qubit_to_check_orig(g)
+        # end = timer()
+
+    #     totaltime += (end-start)
+    # print("Execution check_to_qubit per step : {0} ms".format(totaltime/n_steps*1e3))
 
 
 # This big block of variables is meant to pre-compute a lot of the
@@ -415,7 +421,6 @@ _lpg_wrap = {
             }
 
 #################################
-USE_CLIB = 0
 from decoding_utils import check_funcs_path, cdef_str_check_funcs
 from cffi import FFI
 
@@ -426,6 +431,7 @@ cmqc = check_funcs_ffi.new('float[4][4]')
 cmcq = check_funcs_ffi.new('float[4][4]')
 
 
+# uses CLIB
 # profile = LineProfiler()
 # @profile
 def check_to_qubit(g):
@@ -436,106 +442,58 @@ def check_to_qubit(g):
         sprt_len = len(sprt)
         bs = range(sprt_len)
 
-        mqc = np.array([g.node[q]['mqc'][v] for q in sprt])
-        mcq = np.zeros_like(g.node[v]['mcq'].values())
+        # write input for CLIB in cmqc
+        i=0
+        for q in sprt:
+            j=0
+            for val in g.node[q]['mqc'][v]:
+                cmqc[i][j] = val
+                j = j+1
+            i=i+1
 
-        mqc_len = len(mqc[0])
+        mqc_len = 4 #len(mqc[0])
         mcq_len = mqc_len
+        mcq = np.ndarray(shape=(sprt_len,mcq_len)) # initialization inside CLIB
 
         # factor sum to avoid excess multiplications
         if check[0] == 'XXXX':
-            if USE_CLIB:
-                for i in range(mqc_len):
-                    for j in range(mqc_len):
-                        cmqc[i][j] = mqc[i][j]
+            # call CLIB
+            retVal = check_funcs_lib.check0(cmcq, cmqc, mcq_len, sprt_len, synd)
 
-                retVal = check_funcs_lib.check0(cmcq, cmqc, mcq_len, sprt_len, synd)
-
-                for i in range(mcq_len):
-                    for j in range(mcq_len):
-                        mcq[i][j] = cmcq[i][j]
-            else:                  
-                bs = range(sprt_len)
-                for b in bs:
-                    lst = [_ for _ in bs if _ != b]
-                    ix1, ix2, ix3 = [mqc[_][0] + mqc[_][2] for _ in lst]
-                    yz1, yz2, yz3 = [mqc[_][3] + mqc[_][1] for _ in lst]
-                    odd_2 = yz2 * ix3 + ix2 * yz3
-                    even_2 = yz2 * yz3 + ix2 * ix3
-                    odd_3 = yz1 * even_2 + ix1 * odd_2
-                    even_3 = ix1 * even_2 + yz1 * odd_2
-                    mcq[b, 0] += odd_3 if synd == 1 else even_3
-                    mcq[b, 2] += odd_3 if synd == 1 else even_3
-                    mcq[b, 1] += even_3 if synd == 1 else odd_3
-                    mcq[b, 3] += even_3 if synd == 1 else odd_3
+            # get the normalized results bac
+            for i in range(mcq_len):
+                for j in range(mcq_len):
+                    mcq[i][j] = cmcq[i][j]
 
         elif check[0] == 'ZZZZ':
-            if USE_CLIB:
-                for i in range(mqc_len):
-                    for j in range(mqc_len):
-                        cmqc[i][j] = mqc[i][j]
+            # call CLIB
+            retVal = check_funcs_lib.check1(cmcq, cmqc, mcq_len, sprt_len, synd)
 
-                retVal = check_funcs_lib.check1(cmcq, cmqc, mcq_len, sprt_len, synd)
-
-                for i in range(mcq_len):
-                    for j in range(mcq_len):
-                        mcq[i][j] = cmcq[i][j]
-            else:
-                for b in bs:
-                    lst = [_ for _ in bs if _ != b]
-                    iz1, iz2, iz3 = [mqc[_][0] + mqc[_][1] for _ in lst]
-                    xy1, xy2, xy3 = [mqc[_][2] + mqc[_][3] for _ in lst]
-                    odd_2 = xy2 * iz3 + iz2 * xy3
-                    even_2 = xy2 * xy3 + iz2 * iz3
-                    odd_3 = xy1 * even_2 + iz1 * odd_2
-                    even_3 = iz1 * even_2 + xy1 * odd_2
-                    mcq[b, 0] += odd_3 if synd == 1 else even_3
-                    mcq[b, 2] += even_3 if synd == 1 else odd_3
-                    mcq[b, 1] += odd_3 if synd == 1 else even_3
-                    mcq[b, 3] += even_3 if synd == 1 else odd_3
+            # get the normalized results bac
+            for i in range(mcq_len):
+                for j in range(mcq_len):
+                    mcq[i][j] = cmcq[i][j]
 
         elif check[0] == 'XX':
-            if USE_CLIB:
-                for i in range(sprt_len):
-                    for j in range(mqc_len):
-                        cmqc[i][j] = mqc[i][j]
+            # call CLIB
+            retVal = check_funcs_lib.check2(cmcq, cmqc, mcq_len, sprt_len, synd)
 
-                retVal = check_funcs_lib.check2(cmcq, cmqc, mcq_len, sprt_len, synd)
-
-                for i in range(sprt_len):
-                    for j in range(mcq_len):
-                        mcq[i][j] = cmcq[i][j]
-            else:
-                for b in bs:
-                    othr = [_ for _ in bs if _ != b][0]
-                    ix = mqc[othr][0] + mqc[othr][2]
-                    yz = mqc[othr][3] + mqc[othr][1]
-                    mcq[b, 0] += ix if synd == 0 else yz
-                    mcq[b, 1] += yz if synd == 0 else ix
-                    mcq[b, 2] += ix if synd == 0 else yz
-                    mcq[b, 3] += yz if synd == 0 else ix
+            # get the normalized results bac
+            for i in range(sprt_len):
+                for j in range(mcq_len):
+                    mcq[i][j] = cmcq[i][j]
 
         elif check[0] == 'ZZ':
-            if USE_CLIB:
-                for i in range(sprt_len):
-                    for j in range(mqc_len):
-                        cmqc[i][j] = mqc[i][j]
+            # call CLIB
+            retVal = check_funcs_lib.check3(cmcq, cmqc, mcq_len, sprt_len, synd)
 
-                retVal = check_funcs_lib.check3(cmcq, cmqc, mcq_len, sprt_len, synd)
-
-                for i in range(sprt_len):
-                    for j in range(mcq_len):
-                        mcq[i][j] = cmcq[i][j]
-            else:
-                for b in bs:
-                    othr = [_ for _ in bs if _ != b][0]
-                    iz = mqc[othr][0] + mqc[othr][1]
-                    xy = mqc[othr][2] + mqc[othr][3]
-                    mcq[b, 0] += iz if synd == 0 else xy
-                    mcq[b, 1] += iz if synd == 0 else xy
-                    mcq[b, 2] += xy if synd == 0 else iz
-                    mcq[b, 3] += xy if synd == 0 else iz
+            # get the normalized results bac
+            for i in range(sprt_len):
+                for j in range(mcq_len):
+                    mcq[i][j] = cmcq[i][j]
         else:
+            mqc = np.array([g.node[q]['mqc'][v] for q in sprt])
+            mcq = np.zeros(shape=(sprt_len,mcq_len))
             # sum over local Pauli group
             lpg = _lpg_wrap[(check[0], synd)]
             
@@ -544,16 +502,13 @@ def check_to_qubit(g):
                 for tpl in elem:
                     mcq[tpl] += summand / mqc[tpl]
 
-            #normalization part
+            #normalization part only in this case (as this not handeled by CLIB)
             for b in bs:
                 mcq[b, :] = mcq[b, :] / sum(mcq[b, :])
         
-        # normalize
-        if not USE_CLIB: # CLIB normalizes internally to save overhead
-            for b in bs:
-                mcq[b, :] = mcq[b, :] / sum(mcq[b, :])
-
-        # save result back to graph
+        # normalize (not needed)
+        # CLIB normalizes internally to save overhead
+        # so just save result back to graph
         for b in bs:
             g.node[v]['mcq'][sprt[b]] = mcq[b, :]
 
@@ -626,8 +581,51 @@ def check_to_qubit_orig(g):
         for b in bs:
             g.node[v]['mcq'][sprt[b]] = mcq[b, :] / sum(mcq[b, :])
 
-# @profile
+# uses CLIB (not well tested yet and also does not perform well)
 def qubit_to_check(g):
+    for v in _bits(g):
+        # product over neighbours not c
+        chex = list(g[v].keys())
+        for chek in chex:
+            msgs = [g.node[_]['mcq'][v] for _ in chex if _ != chek]
+            g.node[v]['mqc'][chek] = reduce(mul, msgs, g.node[v]['prior'])
+
+        # normalize
+        keys = g.node[v]['mqc'].keys()
+        keys_len = len( g.node[v]['mqc'].keys() )
+        mqc_len = 4
+
+        # write input for CLIB in cmqc
+        i=0
+        for k in g.node[v]['mqc'].keys():
+            j=0
+            for val in g.node[v]['mqc'][k]:
+                cmqc[i][j] = val
+                j = j+1
+            i=i+1
+
+        mqc = np.ndarray(shape=(keys_len,mqc_len)) # initialization inside CLIB
+
+        retVal = check_funcs_lib.normalize(cmqc, mqc_len, keys_len)
+
+        # get the normalized results back
+        for i in range(keys_len):
+            for j in range(mqc_len):
+                mqc[i][j] = cmqc[i][j]
+
+        i=0
+        for k in g.node[v]['mqc'].keys():
+            g.node[v]['mqc'][k] = mqc[i]
+            i=i+1
+
+        # normalize
+        for k in g.node[v]['mqc'].keys():
+            g.node[v]['mqc'][k] /= sum(g.node[v]['mqc'][k])
+
+        # print(g.node[v]['mqc'])
+
+# @profile
+def qubit_to_check_orig(g):
     for v in _bits(g):
         # product over neighbours not c
         chex = list(g[v].keys())
