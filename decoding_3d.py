@@ -178,10 +178,10 @@ class Sim3D(object):
         n = self.layout.n
         x = self.layout.map.inv
 
-        if not(metric):
+        if metric is None:
             metric = lambda flp_1, flp_2: self.manhattan_metric(flp_1, flp_2)
         
-        if not bdy_info:
+        if bdy_info is None:
             bdy_info = lambda flp: self.manhattan_bdy_tpl(flp)
 
         flip_idxs = flat_flips(synds, n)

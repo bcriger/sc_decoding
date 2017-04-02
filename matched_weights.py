@@ -1,6 +1,6 @@
 import decoding_2d as dc
 import itertools as it
-from line_profiler import LineProfiler
+# from line_profiler import LineProfiler
 from math import fsum
 import networkx as nx
 import numpy as np

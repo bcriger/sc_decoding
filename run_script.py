@@ -90,6 +90,8 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
             elif sim_type == 'circ':
                 current_sim = dc3.Sim3D(dist, dist, ('fowler', err))
+                met_fun = dc3.nest_metric(current_sim, err)
+                bdy_fun = dc3.nest_bdy_tpl(current_sim, err)
             
             if sim_type == 'dep':
                 current_sim.error_model = em.depolarize(err,
@@ -97,6 +99,8 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                 dist_func = fancy_dist(dist, 0.66666667 * err)
 
             current_sim.run(n_trials, progress=False, bp=bp)
+            # current_sim.run(n_trials, progress=False,
+                            # metric=met_fun, bdy_info=bdy_fun)
             # current_sim.run(n_trials, progress=False, dist_func=dist_func)
             failures.append(current_sim.errors)
         output_dict.update({'failures ' + str(dist) : failures})
