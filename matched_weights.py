@@ -465,7 +465,7 @@ def check_to_qubit(g):
             # call CLIB
             retVal = check_funcs_lib.check0(cmcq, cmqc, mcq_len, sprt_len, synd)
 
-            # get the normalized results bac
+            # get the normalized results back
             for i in range(mcq_len):
                 for j in range(mcq_len):
                     mcq[i][j] = cmcq[i][j]
@@ -474,7 +474,7 @@ def check_to_qubit(g):
             # call CLIB
             retVal = check_funcs_lib.check1(cmcq, cmqc, mcq_len, sprt_len, synd)
 
-            # get the normalized results bac
+            # get the normalized results back
             for i in range(mcq_len):
                 for j in range(mcq_len):
                     mcq[i][j] = cmcq[i][j]
@@ -483,7 +483,7 @@ def check_to_qubit(g):
             # call CLIB
             retVal = check_funcs_lib.check2(cmcq, cmqc, mcq_len, sprt_len, synd)
 
-            # get the normalized results bac
+            # get the normalized results back
             for i in range(sprt_len):
                 for j in range(mcq_len):
                     mcq[i][j] = cmcq[i][j]
@@ -492,11 +492,12 @@ def check_to_qubit(g):
             # call CLIB
             retVal = check_funcs_lib.check3(cmcq, cmqc, mcq_len, sprt_len, synd)
 
-            # get the normalized results bac
+            # get the normalized results back
             for i in range(sprt_len):
                 for j in range(mcq_len):
                     mcq[i][j] = cmcq[i][j]
         else:
+            raise ValueError("This should never happen")
             mqc = np.array([g.node[q]['mqc'][v] for q in sprt])
             mcq = np.zeros(shape=(sprt_len,mcq_len))
             # sum over local Pauli group
