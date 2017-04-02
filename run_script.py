@@ -119,7 +119,7 @@ if __name__ == '__main__':
     flnm = argv[6]
     sim_type = argv[7] if len(argv) > 7 else 'iidxz'
     bc = 'rotated'
-    bp = False
+    bp = True
     run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type, bc, bp)
 
 #---------------------------------------------------------------------#
