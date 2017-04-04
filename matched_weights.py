@@ -4,7 +4,7 @@ import itertools as it
 from math import fsum
 import networkx as nx
 import numpy as np
-from operator import mul, add
+from operator import mul, add, or_
 from scipy.special import binom
 from scipy.stats import entropy
 import sparse_pauli as sp
@@ -40,7 +40,6 @@ def qubit_prob(a, b, nb_0, nb_1):
 #---------------------------------------------------------------------#
 
 #------------generic DiGraph algorithms for clipped bboxes------------#
-
 def crds_to_digraph(crd_0, crd_1, vertices):
     """
     In order to count paths on some digraph, we first have to make
@@ -178,9 +177,6 @@ def record_beliefs(beliefs, g, layout, stab_type):
 
 def path_prob(g, v=None):
     """
-    For some reason, I don't think the function `path_prob' is
-    well-motivated. 
-    I don't think it's calculating the right thing. 
     I've done a derivation in ReWeighting.tex that does calculate the
     right(ish) thing, which is the odds that there's a path joining two
     vertices given that it's either that or an empty bbox. 
@@ -283,6 +279,168 @@ def input_beliefs(sim, err, bp_rounds=None):
     propagate_beliefs(tg, bp_rounds)
     
     return beliefs(tg)
+
+def anc_graph(layout, stab_type, beliefs=None, missing_tiles=False):
+    """
+    Produces an unweighted, undirected graph, with ancillas that share
+    a qubit adjacent. 
+    """
+    if stab_type == 'X':
+        ancs = layout.x_ancs()
+        bdy = layout.boundary['x_left'] + layout.boundary['x_right']
+    elif stab_type == 'Z':
+        ancs = layout.z_ancs()
+        bdy = layout.boundary['z_top'] + layout.boundary['z_bot']
+    else:
+        raise ValueError('unknown stab_type: {}'.format(stab_type))
+
+    if missing_tiles:
+        ancs += bdy
+
+    g = nx.Graph()
+    for pr in it.product(ancs, repeat=2):
+        if (pr[1][0] - pr[0][0], pr[1][1] - pr[0][1]) in big_shifts:
+            g.add_edge(*pr)
+    
+    if beliefs is not None:
+        # record odds as 'weight'
+        record_beliefs(beliefs, g, layout, stab_type)
+        for edge in g.edges(data=True):
+            p = edge[2]['p_edge']
+            edge[2]['weight'] = safe_odds(p)
+            edge[2].pop('p_edge', None)
+    
+    return g
+
+def has_straight_path(crd_0, crd_1):
+    """
+    For a coordinate pair, returns True if the path between them is
+    straight on a rotated lattice. 
+    """
+    n_steps_x = abs(crd_1[0] - crd_0[0]) / 2 # intdiv
+    n_steps_y = abs(crd_1[1] - crd_0[1]) / 2 # intdiv
+
+    return n_steps_x == n_steps_y
+
+def all_pairs_multipath_sum(graph):
+    """
+    Inspired by Floyd-Warshall, we iteratively calculate the effective 
+    path length between all pairs of X or Z syndromes.
+    To pull this off, we first calculate the path lengths using unit
+    edge weights, then iterate over sets of pairs of fixed length. 
+    Each of these pairs has a reduction to pairs with path lengths
+    reduced by one.
+    """
+
+    # TODO Split this up into meaningful sub-functions
+
+    # We begin by finding all minimum path lengths so that we can sort
+    # vertex pairs into the correct order
+    vs = list(sorted(graph.nodes()))
+    es = list(sorted(graph.edges()))
+    V = len(vs)
+    len_dct = dict(nx.all_pairs_shortest_path_length(graph))
+    
+    r_cs = list(it.product(range(V), repeat=2))
+
+    length = np.zeros((V, V), dtype=np.int_)
+    for r, c in r_cs:
+        length[r, c] = len_dct[vs[r]][vs[c]]
+
+    # TODO is this always range(distance)?
+    possible_lengths = sorted(reduce(or_,
+                                [set(d.values())
+                                    for d in len_dct.values()]))
+    
+    path_sum = np.zeros((V, V), dtype=np.float_)
+    for l in possible_lengths:
+        if l == 0:
+            continue
+        if l == 1:
+            # record edge weights as lengths
+            for r, c in r_cs:
+                if (vs[r], vs[c]) in es:
+                    path_sum[r, c] = graph[vs[r]][vs[c]]['weight']
+                    path_sum[c, r] = path_sum[r, c]
+        else:
+            for r, c in r_cs:
+                if length[r, c] == l:
+                    # weighted sum over neighbours with known path sums
+                    closer_neighbours = [vs.index(v) for v in graph.adj[vs[c]] if length[r, vs.index(v)] == l - 1]
+                    path_sum[r, c] = sum([path_sum[r, dx] * path_sum[dx, c] for dx in closer_neighbours])
+                    path_sum[c, r] = path_sum[r, c]
+    
+    return path_sum, vs
+
+def path_sum_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
+    """
+    Create a pair of graphs to use in independent X/Z matching by:
+     - Running BP on the Tanner graph
+     - transferring the beliefs to tilings containing the X/Z ancillas
+     - running an all-pairs pathwise sum over the odds of a qubit in
+       the tiling (an edge) containing an anticommuting error
+     - cherry-picking out the path sums that match the syndrome
+     - neg-neg-logging them 
+    """
+    layout = sim.layout
+
+    if beliefs is None:
+        blfs = input_beliefs(sim, err, bp_rounds)
+    else:
+        blfs = beliefs
+
+    x_synd, z_synd = sim.syndromes(err)
+
+    x_anc_graph = anc_graph(layout, 'X', blfs, missing_tiles=True)
+    z_anc_graph = anc_graph(layout, 'Z', blfs, missing_tiles=True)
+
+    x_path_sum, x_vs = all_pairs_multipath_sum(x_anc_graph)
+    z_path_sum, z_vs = all_pairs_multipath_sum(z_anc_graph)
+
+    x_bdy_1 = layout.boundary['x_left']
+    x_bdy_2 = layout.boundary['x_right']
+    z_bdy_1 = layout.boundary['z_top']
+    z_bdy_2 = layout.boundary['z_bot']
+
+    spsvb1b2 = [(x_synd, x_path_sum, x_vs, x_bdy_1, x_bdy_2),
+                (z_synd, z_path_sum, z_vs, z_bdy_1, z_bdy_2)]
+
+    out_graphs = []    
+    for synd, path_sum, vs, bdy_1, bdy_2 in spsvb1b2:
+        g = nx.Graph()
+        
+        # ancilla-to-boundary edges
+        bdx_1 = [vs.index(_) for _ in bdy_1]
+        bdx_2 = [vs.index(_) for _ in bdy_2]
+        for pt in synd:
+            crd = layout.map.inv[pt]
+            dx = vs.index(crd)
+            w_1 = sum([path_sum[dx, _] for _ in bdx_1])
+            w_2 = sum([path_sum[dx, _] for _ in bdx_2])
+            g.add_edge(pt, (pt,'b'))
+            if w_1 > w_2:
+                wt, c_pt = -np.log(w_1), bdy_1[0]
+            elif w_2 > w_1:
+                wt, c_pt = -np.log(w_2), bdy_2[0]
+            else:
+                raise ValueError("Ambiguous edge weight (nan?)")
+            g[pt][(pt, 'b')].update({'weight': -wt, 'close_pt': c_pt})
+        
+        # boundary-boundary edges
+        for p, q in it.combinations(synd, r=2):
+            # boundary-boundary
+            g.add_edge((p, 'b'), (q, 'b'), weight=0.)
+        
+        # bulk
+        for p, q in it.combinations(synd, r=2):
+            pdx = vs.index(layout.map.inv[p])
+            qdx = vs.index(layout.map.inv[q])
+            wt = -np.log(path_sum[pdx, qdx])
+            g.add_edge(p, q, weight=-wt)
+
+        out_graphs.append(g)
+    
+    return out_graphs
 
 def bp_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
     """
@@ -448,17 +606,17 @@ def check_to_qubit(g):
         bs = range(sprt_len)
 
         # write input for CLIB in cmqc
-        i=0
+        i = 0
         for q in sprt:
-            j=0
+            j = 0
             for val in g.node[q]['mqc'][v]:
                 cmqc[i][j] = val
-                j = j+1
-            i=i+1
+                j = j + 1
+            i = i + 1
 
         mqc_len = 4 #len(mqc[0])
         mcq_len = mqc_len
-        mcq = np.ndarray(shape=(sprt_len,mcq_len)) # initialization inside CLIB
+        mcq = np.ndarray(shape=(sprt_len, mcq_len)) # initialization inside CLIB
 
         # factor sum to avoid excess multiplications
         if check[0] == 'XXXX':
@@ -508,7 +666,7 @@ def check_to_qubit(g):
                 for tpl in elem:
                     mcq[tpl] += summand / mqc[tpl]
 
-            #normalization part only in this case (as this not handeled by CLIB)
+            #normalization part only in this case (as this is not handled by CLIB)
             for b in bs:
                 mcq[b, :] = mcq[b, :] / sum(mcq[b, :])
         
@@ -619,7 +777,7 @@ def qubit_to_check(g):
             for j in range(mqc_len):
                 mqc[i][j] = cmqc[i][j]
 
-        i=0
+        i = 0
         for k in g.node[v]['mqc'].keys():
             g.node[v]['mqc'][k] = mqc[i]
             i=i+1
