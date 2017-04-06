@@ -216,7 +216,7 @@ def safe_odds(p):
         if p > 10 **-16:
             return p / (1. - p)
         else:
-            return p
+            return min(10**-32, p)
     else:
         return 999999999999999.
 
@@ -336,9 +336,9 @@ def len_mat(graph, vs):
 
     return length
 
-profile = LineProfiler()
-@profile
-def all_pairs_multipath_sum(graph, d):
+# profile = LineProfiler()
+# @profile
+def all_pairs_multipath_sum(graph, d, pair_lst=None):
     """
     Inspired by Floyd-Warshall, we iteratively calculate the effective 
     path length between all pairs of X or Z syndromes.
@@ -355,28 +355,54 @@ def all_pairs_multipath_sum(graph, d):
     vs = list(sorted(graph.nodes()))
     es = list(sorted(graph.edges()))
     
-    # length = len_mat(graph, vs)
+    length = np.array([[ c_pair_dist(vs[r], vs[c])
+                        for r in range(len(vs))]
+                        for c in range(len(vs))])
 
-    possible_lengths = range(2, d)
+    # possible_lengths = range(2, d)
     
-    path_sum = nx.to_numpy_matrix(graph, nodelist=vs)
+    adj_mat = nx.to_numpy_matrix(graph, nodelist=vs)
+    path_sum = adj_mat.copy()
+    
     enum_vs = list(enumerate(vs))
     v_dx = {v: dx for dx, v in enumerate(vs)}
-    # for l in possible_lengths:
-    #     for r, c in it.product(range(len(vs)), repeat=2):
-    #         if length[r, c] == l:
-    #             # weighted sum over neighbours with known path sums
-    #             closer_neighbours = [v_dx[v] for v in graph.adj[vs[c]] if length[r, v_dx[v]] == l - 1]
-    #             path_sum[r, c] = sum([path_sum[r, dx] * path_sum[dx, c] for dx in closer_neighbours])
-    #             path_sum[c, r] = path_sum[r, c]
-    for l in possible_lengths:
-        for tpl_0, tpl_1 in it.product(enum_vs, repeat=2):
-            r, v0 = tpl_0; c, v1 = tpl_1
-            if dc.pair_dist(v0, v1) == l:
-                closer_neighbours = [v_dx[v] for v in graph.adj[v1] if dc.pair_dist(v0, v) == l - 1]
-                path_sum[r, c] = sum([path_sum[r, dx] * path_sum[dx, c] for dx in closer_neighbours])
-                path_sum[c, r] = path_sum[r, c]
+    
+    if pair_lst is None:
+        sorted_prs = sorted([(c_pair_dist(c0, c1), c0, c1)
+                                for c0, c1 in it.product(vs, repeat=2)])
+        sorted_prs = filter(lambda tpl: tpl[0] >= 2, sorted_prs)
+    else:
+        sorted_prs = all_sub_pairs(pair_lst, vs, graph)
+    
+    for elem in sorted_prs:
+        l, c_0, c_1 = elem
+        r, c = v_dx[c_0], v_dx[c_1]
+        nbrs = [v_dx[v] for v in graph.adj[c_1] if length[r, v_dx[v]] == l - 1]
+        path_sum[r, c] = sum([path_sum[r, dx] * path_sum[dx, c] for dx in nbrs])
+        path_sum[c, r] = path_sum[r, c]
+
     return path_sum, vs
+
+def all_sub_pairs(pair_lst, vs, graph):
+    """
+    Returns a list of pairs of co-ordinates whose path lengths have to
+    be calculated, sorted by length:
+    """
+    max_len = max([c_pair_dist(*pr) for pr in pair_lst])
+    lengths = range(2, max_len)
+    ordered_pair_lsts = [set() for _ in lengths]
+    for pair in pair_lst:
+        nec_pairs = one_sub_pairs(pair, vs, graph)
+        for length in lengths:
+            ordered_pair_lsts[length] |= nec_pairs[length]
+    # TODO FIXME Not Right Format
+    return ordered_pair_lsts
+
+def one_sub_pairs(pair, vs, graph):
+    """
+    pass
+    """
+    pass
 
 def path_sum_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
     """
@@ -1029,3 +1055,20 @@ def bc_sim(sim, total_rounds, n_trials):
     return diff_list
 
 #---------------------------------------------------------------------#
+
+#---------------------convenience functions---------------------------#
+c0 = check_funcs_ffi.new('int[2]')
+c1 = check_funcs_ffi.new('int[2]')
+def c_pair_dist(crd_0, crd_1):
+    """
+    Wraps pair_dist from check_funcs/mylib.cpp so you can pass in
+    iterables.
+    """
+    # There's got to be a clean way to do this
+    c0[0], c0[1] = crd_0
+    c1[0], c1[1] = crd_1
+
+    return check_funcs_lib.pair_dist(c0, c1)
+
+#---------------------------------------------------------------------#
+

@@ -30,6 +30,7 @@ cdef_str_check_funcs = """
             int check2( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
             int check3( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
             int normalize( float cmcq[4][4], int mcq_len, int sprt_len);
+            int pair_dist( int crd_0[2], int crd_1[2]);
             """
 
 check_funcs_path = dir_path + "/check_funcs/libmyclib.so"

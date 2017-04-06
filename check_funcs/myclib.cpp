@@ -123,10 +123,10 @@ extern "C" int check3( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt
         auto othr = lst[0];
         auto iz = cmqc[othr][0] + cmqc[othr][1];
         auto xy = cmqc[othr][2] + cmqc[othr][3];
-        cmcq[b][0] += (synd==0?iz:xy);
-        cmcq[b][1] += (synd==0?iz:xy);
-        cmcq[b][2] += (synd==0?xy:iz);
-        cmcq[b][3] += (synd==0?xy:iz);
+        cmcq[b][0] += (synd == 0 ? iz : xy);
+        cmcq[b][1] += (synd == 0 ? iz : xy);
+        cmcq[b][2] += (synd == 0 ? xy : iz);
+        cmcq[b][3] += (synd == 0 ? xy : iz);
     }
 
     normalize(cmcq,mcq_len,sprt_len);
@@ -148,10 +148,16 @@ extern "C" int normalize( float cmcq[4][4], int mcq_len, int sprt_len)
     }
 }
 
-extern "C" int pair_dist(){
+extern "C" int pair_dist(int crd_0[2], int crd_1[2]){
     /*
-        
-    */ 
+        Fast version of decoding_2d.pair_dist, I'm hoping to use this
+        in matched_weights.all_pairs_multipath_sum
+    */
+
+    int d_x = crd_1[0] - crd_0[0]; // intdiv
+    int d_y = crd_1[1] - crd_0[1]; // intdiv
+    
+    return (abs(d_x + d_y) + abs(d_x - d_y)) / 4; //intdiv
 }
 
 // extern "C" int Clean()
