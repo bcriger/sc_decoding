@@ -1,10 +1,12 @@
 import decoding_2d as dc
 import itertools as it
-# from line_profiler import LineProfiler
+from line_profiler import LineProfiler
 from math import fsum
+from mat_pow_sum import mat_pow_sum
 import networkx as nx
 import numpy as np
 from operator import mul, add, or_
+from scipy.sparse import csr_matrix
 from scipy.special import binom
 from scipy.stats import entropy
 import sparse_pauli as sp
@@ -322,7 +324,21 @@ def has_straight_path(crd_0, crd_1):
 
     return n_steps_x == n_steps_y
 
-def all_pairs_multipath_sum(graph):
+def len_mat(graph, vs):
+    """
+    returns a matrix of path lengths, calculated by Dijkstra
+    """
+    len_dct = dict(nx.all_pairs_shortest_path_length(graph))
+    V = len(vs)
+    length = np.zeros((V, V), dtype=np.int_)
+    for r, c in it.product(range(V), repeat=2):
+        length[r, c] = len_dct[vs[r]][vs[c]]
+
+    return length
+
+profile = LineProfiler()
+@profile
+def all_pairs_multipath_sum(graph, d):
     """
     Inspired by Floyd-Warshall, we iteratively calculate the effective 
     path length between all pairs of X or Z syndromes.
@@ -338,38 +354,28 @@ def all_pairs_multipath_sum(graph):
     # vertex pairs into the correct order
     vs = list(sorted(graph.nodes()))
     es = list(sorted(graph.edges()))
-    V = len(vs)
-    len_dct = dict(nx.all_pairs_shortest_path_length(graph))
     
-    r_cs = list(it.product(range(V), repeat=2))
+    # length = len_mat(graph, vs)
 
-    length = np.zeros((V, V), dtype=np.int_)
-    for r, c in r_cs:
-        length[r, c] = len_dct[vs[r]][vs[c]]
-
-    # TODO is this always range(distance)?
-    possible_lengths = sorted(reduce(or_,
-                                [set(d.values())
-                                    for d in len_dct.values()]))
+    possible_lengths = range(2, d)
     
-    path_sum = np.zeros((V, V), dtype=np.float_)
+    path_sum = nx.to_numpy_matrix(graph, nodelist=vs)
+    enum_vs = list(enumerate(vs))
+    v_dx = {v: dx for dx, v in enumerate(vs)}
+    # for l in possible_lengths:
+    #     for r, c in it.product(range(len(vs)), repeat=2):
+    #         if length[r, c] == l:
+    #             # weighted sum over neighbours with known path sums
+    #             closer_neighbours = [v_dx[v] for v in graph.adj[vs[c]] if length[r, v_dx[v]] == l - 1]
+    #             path_sum[r, c] = sum([path_sum[r, dx] * path_sum[dx, c] for dx in closer_neighbours])
+    #             path_sum[c, r] = path_sum[r, c]
     for l in possible_lengths:
-        if l == 0:
-            continue
-        if l == 1:
-            # record edge weights as lengths
-            for r, c in r_cs:
-                if (vs[r], vs[c]) in es:
-                    path_sum[r, c] = graph[vs[r]][vs[c]]['weight']
-                    path_sum[c, r] = path_sum[r, c]
-        else:
-            for r, c in r_cs:
-                if length[r, c] == l:
-                    # weighted sum over neighbours with known path sums
-                    closer_neighbours = [vs.index(v) for v in graph.adj[vs[c]] if length[r, vs.index(v)] == l - 1]
-                    path_sum[r, c] = sum([path_sum[r, dx] * path_sum[dx, c] for dx in closer_neighbours])
-                    path_sum[c, r] = path_sum[r, c]
-    
+        for tpl_0, tpl_1 in it.product(enum_vs, repeat=2):
+            r, v0 = tpl_0; c, v1 = tpl_1
+            if dc.pair_dist(v0, v1) == l:
+                closer_neighbours = [v_dx[v] for v in graph.adj[v1] if dc.pair_dist(v0, v) == l - 1]
+                path_sum[r, c] = sum([path_sum[r, dx] * path_sum[dx, c] for dx in closer_neighbours])
+                path_sum[c, r] = path_sum[r, c]
     return path_sum, vs
 
 def path_sum_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
@@ -394,8 +400,8 @@ def path_sum_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
     x_anc_graph = anc_graph(layout, 'X', blfs, missing_tiles=True)
     z_anc_graph = anc_graph(layout, 'Z', blfs, missing_tiles=True)
 
-    x_path_sum, x_vs = all_pairs_multipath_sum(x_anc_graph)
-    z_path_sum, z_vs = all_pairs_multipath_sum(z_anc_graph)
+    x_path_sum, x_vs = all_pairs_multipath_sum(x_anc_graph, layout.dx)
+    z_path_sum, z_vs = all_pairs_multipath_sum(z_anc_graph, layout.dx)
 
     x_bdy_1 = layout.boundary['x_left']
     x_bdy_2 = layout.boundary['x_right']
