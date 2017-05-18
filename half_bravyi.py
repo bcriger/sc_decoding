@@ -40,8 +40,6 @@ def bravyi_weight_graphs(sim, syndromes, cosets):
     mdl = sim.error_model.p_arr # IZXY ordering
     p_xy = mdl[2] + mdl[3]
     p_zy = mdl[1] + mdl[3]
-    w_x = p_xy / (1. - p_xy)
-    w_z = p_zy / (1. - p_zy)
 
     x_pts = summ([bdy[_] for _ in ('x_left', 'x_right')])
     x_pts += summ([ancs[_] for _ in ('x_top', 'x_sq', 'x_bot')])

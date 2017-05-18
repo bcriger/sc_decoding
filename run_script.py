@@ -2,6 +2,7 @@ import circuit_metric as cm
 import decoding_2d as dc2
 import decoding_3d as dc3
 import error_model as em
+import half_bravyi as hb
 import itertools as it
 import matched_weights as mw
 import numpy as np
@@ -98,10 +99,11 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                     [[current_sim.layout.map[_]] for _ in current_sim.layout.datas])
                 dist_func = fancy_dist(dist, 0.66666667 * err)
 
-            current_sim.run(n_trials, progress=False, bp=bp)
+            # current_sim.run(n_trials, progress=False, bp=bp)
             # current_sim.run(n_trials, progress=False,
                             # metric=met_fun, bdy_info=bdy_fun)
             # current_sim.run(n_trials, progress=False, dist_func=dist_func)
+            hb.bravyi_run(current_sim, n_trials)
             failures.append(current_sim.errors)
         output_dict.update({'failures ' + str(dist) : failures})
 
