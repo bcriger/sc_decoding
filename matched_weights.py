@@ -2,7 +2,6 @@ import decoding_2d as dc
 import itertools as it
 #from line_profiler import LineProfiler
 from math import fsum
-from mat_pow_sum import mat_pow_sum
 import networkx as nx
 import numpy as np
 from operator import mul, add, or_
