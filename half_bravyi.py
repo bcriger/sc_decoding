@@ -61,10 +61,10 @@ def bravyi_weight_graphs(sim, syndromes, cosets):
         frontier = new_frontier
 
     for pt in bdy['x_left']:
-        g_x.add_edge('x_left', pt, p_edge = 0.5)
+        g_x.add_edge((-4, d), pt, p_edge = 0.5)
 
     for pt in bdy['x_right']:
-        g_x.add_edge(pt, 'x_right', p_edge = 0.5)
+        g_x.add_edge(pt, (2 * d + 4, d), p_edge = 0.5)
 
     z_pts = summ([bdy[_] for _ in ('z_top', 'z_bot')])
     z_pts += summ([ancs[_] for _ in ('z_left', 'z_sq', 'z_right')])
@@ -87,10 +87,10 @@ def bravyi_weight_graphs(sim, syndromes, cosets):
         frontier = new_frontier
 
     for pt in bdy['z_bot']:
-        g_z.add_edge('z_bot', pt, p_edge = 0.5)
+        g_z.add_edge((d, -4), pt, p_edge = 0.5)
 
     for pt in bdy['z_top']:
-        g_z.add_edge(pt, 'z_top', p_edge = 0.5)
+        g_z.add_edge(pt, (d, 2 * d + 4), p_edge = 0.5)
     
     return g_x, g_z
 

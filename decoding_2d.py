@@ -491,12 +491,12 @@ class Sim2D(object):
             x_synd, z_synd = self.syndromes(err)
             if bp:
                 blfs = self.beliefs(err)
-                x_corr, z_corr = bp_correction(blfs)
-                if self.syndromes(x_corr * z_corr) != self.syndromes(err):
-                    # x_graph, z_graph = mw.bp_graphs(self, err, beliefs=blfs)
-                    x_graph, z_graph = mw.path_sum_graphs(self, err, beliefs=blfs)
-                    x_corr = self.correction(x_graph, 'Z')
-                    z_corr = self.correction(z_graph, 'X')
+                # x_corr, z_corr = bp_correction(blfs)
+                # if self.syndromes(x_corr * z_corr) != self.syndromes(err):
+                # x_graph, z_graph = mw.bp_graphs(self, err, beliefs=blfs)
+                x_graph, z_graph = mw.path_sum_graphs(self, err, beliefs=blfs)
+                x_corr = self.correction(x_graph, 'Z')
+                z_corr = self.correction(z_graph, 'X')
             else:            
                 if self.useBlossom:
                     # without networkx interface (only with blossom)
