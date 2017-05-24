@@ -7,10 +7,14 @@ import pickle as pkl
 import seaborn as sb
 
 #-------------------------NetworkX Graph Drawing----------------------#
-def nx_draw(g):
+def nx_draw(g, edge_color=False):
     pos = {v: np.array(v) for v in g.nodes()}
     labels = {v: str(v) for v in g.nodes()}
-    nx.draw(g, pos)
+    try:
+        weights = [2 * e[2]['p_edge'] for e in g.edges(data=True)]
+    except:
+        weights = [2 for e in g.edges()]
+    nx.draw(g, pos, width=weights)
     nx.draw_networkx_labels(g, pos, labels)
 
 #---------------------------------------------------------------------#
