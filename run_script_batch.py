@@ -12,7 +12,7 @@ if __name__ == '__main__':
 
     str_dists = "'" + argv[4] + "'"
 
-    for job_num in range(start_dx, end_dx+1):
+    for job_num in range(start_dx, end_dx + 1):
         new_argv = ["python", "run_script.py"] + argv[1:4] + [str_dists] + [argv[5]] + [flnm + '_' + str(job_num) + ".pkl"] + [sim_type] + [" &"]
         print ' '.join(new_argv)
         os.system(' '.join(new_argv))
