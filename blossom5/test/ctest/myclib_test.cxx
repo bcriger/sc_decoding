@@ -4,25 +4,35 @@ using namespace std;
 
 int main()
 {
-    cout << "Testing lib blossom5" << endl;
-
-    Init();
-
-    int node_num = 6;
-    int edge_num = 9;
-    int *edges = new int[2*edge_num];
-    int *weights = new int[edge_num];
-    edges[0] = 0;   edges[1] = 1;   weights[0] = 3;
-    edges[2] = 0;   edges[3] = 3;   weights[1] = 10;
-    edges[4] = 0;   edges[5] = 4;   weights[2] = 7;
-    edges[6] = 1;   edges[7] = 2;   weights[3] = -1;
-    edges[8] = 1;   edges[9] = 4;   weights[4] = 5;
-    edges[10] = 1;  edges[11] = 5;  weights[5] = 4;
-    edges[12] = 2;  edges[13] = 5;  weights[6] = -7;
-    edges[14] = 3;  edges[15] = 4;  weights[7] = 0;
-    edges[16] = 4;  edges[17] = 5;  weights[8] = 4;
-    Process(node_num, edge_num, edges, weights);
-    PrintMatching();
-    Clean();
+    // cout << "Testing lib blossom5" << endl;
+    // int node_num = 6;
+    // int edge_num = 9;
+        
+    // run multiple times for timing purposes
+    int repns = 1e6;
+    for (int repn = 0; repn < repns; ++repn)
+    {   
+        Init();
+        int node_num = 6;
+        int edge_num = 9;
+        Edge* edges = new Edge[edge_num];
+        edges[0].uid = 0; edges[0].vid = 1; edges[0].weight = 1;
+        edges[1].uid = 0; edges[1].vid = 2; edges[1].weight = 2;
+        edges[2].uid = 0; edges[2].vid = 3; edges[2].weight = 1;
+        edges[3].uid = 1; edges[3].vid = 2; edges[3].weight = 1;
+        edges[4].uid = 1; edges[4].vid = 4; edges[4].weight = 2;
+        edges[5].uid = 2; edges[5].vid = 5; edges[5].weight = 1;
+        edges[6].uid = 3; edges[6].vid = 4; edges[6].weight = 0;
+        edges[7].uid = 3; edges[7].vid = 5; edges[7].weight = 0;
+        edges[8].uid = 4; edges[8].vid = 5; edges[8].weight = 0;
+        Process(node_num, edge_num, edges);
+        // if (repn==0)
+        // {
+             // PrintMatching();
+        // }
+        Clean();
+        delete edges;
+    }
+    
     return 0;
 }

@@ -25,7 +25,6 @@ from operator import mul
 import progressbar as pb
 import sparse_pauli as sp
 
-
 try:
     import matplotlib.pyplot as plt
 except RuntimeError:
@@ -219,9 +218,9 @@ class Sim2D(object):
 
             pairs = []
             # print('recieved C matching :')
-            for i in range(0,nMatching,2):
-                u,v = id2node[cmatching[i]], id2node[cmatching[i+1]]
-                pairs.append( (u,v) )
+            for i in range(0, nMatching, 2):
+                u, v = id2node[cmatching[i]], id2node[cmatching[i + 1]]
+                pairs.append( (u, v) )
                 # print( '{0}, {1} '.format(u,v) )
 
             #----------- end of c processing
