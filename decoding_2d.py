@@ -191,7 +191,7 @@ class Sim2D(object):
             edge_num = nx.number_of_edges(graph)
             # print( 'no of nodes : {0}, no of edges : {1}'.format(node_num,edge_num) )
             edges = self.ffi.new('Edge[%d]' % (edge_num) )
-            cmatching = self.ffi.new('int[%d]' % (2*node_num) )
+            cmatching = self.ffi.new('int[%d]' % (2 * node_num) )
 
             node2id = { val: index for index, val in enumerate(graph.nodes()) }
             id2node = {v: k for k, v in node2id.iteritems()}
