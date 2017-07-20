@@ -468,7 +468,8 @@ class Sim2D(object):
             com_tpl = tuple(op.com(loop) for op in logs)
         return anticom_dict[com_tpl]
 
-    def run(self, n_trials, verbose=False, progress=True, dist_func=None, bp=False):
+    def run(self, n_trials, verbose=False, progress=True,
+                dist_func=None, bp=False, bp_rounds=None):
         """
         Repeats the following cycle `n_trials` times:
          + Generate a random error
@@ -489,7 +490,7 @@ class Sim2D(object):
             err = self.random_error()
             x_synd, z_synd = self.syndromes(err)
             if bp:
-                blfs = self.beliefs(err)
+                blfs = self.beliefs(err, bp_rounds=bp_rounds)
                 # x_corr, z_corr = bp_correction(blfs)
                 # if self.syndromes(x_corr * z_corr) != self.syndromes(err):
                 # x_graph, z_graph = mw.bp_graphs(self, err, beliefs=blfs)

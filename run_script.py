@@ -100,10 +100,11 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                 dist_func = fancy_dist(dist, 0.66666667 * err)
 
             # current_sim.run(n_trials, progress=False, bp=bp)
+            current_sim.run(n_trials, progress=False, bp=bp, bp_rounds=0)
             # current_sim.run(n_trials, progress=False,
                             # metric=met_fun, bdy_info=bdy_fun)
             # current_sim.run(n_trials, progress=False, dist_func=dist_func)
-            hb.bravyi_run(current_sim, n_trials)
+            # hb.bravyi_run(current_sim, n_trials)
             failures.append(current_sim.errors)
         output_dict.update({'failures ' + str(dist) : failures})
 
