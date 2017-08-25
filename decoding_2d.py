@@ -512,15 +512,21 @@ class Sim2D(object):
             log = self.logical_error(err, x_corr, z_corr)
             self.errors[log] += 1
             if verbose:
+                print_lst = [("error: {}",  err),
+                    ("X syndrome: {}",  x_synd),
+                    ("Z syndrome: {}",  z_synd),
+                    ("X correction: {}",  x_corr),
+                    ("Z correction: {}",  z_corr),
+                    ("logical error: {}",  log)]
+                if self.useBlossom == False:
+                    print_lst.extend([
+                        ("x_graph: {}", "\n".join(map(str,list(x_graph.edges(data=True))))),
+                        ("z_graph: {}", "\n".join(map(str,list(z_graph.edges(data=True)))))
+                        ])
+
                 print("\nTrial status")
-                print("\n".join([
-                    "error: {}".format(err),
-                    "X syndrome: {}".format(x_synd),
-                    "Z syndrome: {}".format(z_synd),
-                    "X correction: {}".format(x_corr),
-                    "Z correction: {}".format(z_corr),
-                    "logical error: {}".format(log)
-                    ]))
+                print("\n".join([ st.format(obj)
+                                for st, obj in print_lst]))
 
         # graphical print of surface with syndromes
         # self.layout.DrawSyndromes( x_graph.nodes(), z_graph.nodes() )
