@@ -103,12 +103,15 @@ def bravyi_run(sim, n_trials):
     for trial in trials:
         err = sim.random_error()
         syndromes = sim.syndromes(err)
-        cosets = sim.dumb_correction(syndromes)
-        g_x, g_z = bravyi_weight_graphs(sim, syndromes, cosets)
+        x_synd, z_synd = syndromes
+        # corrs = sim.dumb_correction(syndromes)
+        z_corr = sim.graphAndCorrection(x_synd, 'Z')
+        x_corr = sim.graphAndCorrection(z_synd, 'X')
+        corrs = x_corr, z_corr
+        g_x, g_z = bravyi_weight_graphs(sim, syndromes, corrs)
         # determine correctness
         p_z, p_x = mw.path_prob(g_x), mw.path_prob(g_z)
         l_x, l_z = sim.layout.logicals()
-        x_corr, z_corr = cosets
         z_corr *= l_z if p_z > 0.5 else sp.I
         x_corr *= l_x if p_x > 0.5 else sp.I
         sim.errors[sim.logical_error(err, x_corr, z_corr)] += 1
