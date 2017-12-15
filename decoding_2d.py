@@ -194,7 +194,7 @@ class Sim2D(object):
             cmatching = self.ffi.new('int[%d]' % (2 * node_num) )
 
             node2id = { val: index for index, val in enumerate(graph.nodes()) }
-            id2node = {v: k for k, v in node2id.iteritems()}
+            id2node = {v: k for k, v in node2id.items()}
             # print(node2id)
 
             e = 0
@@ -344,7 +344,7 @@ class Sim2D(object):
         if PY3:
             id2node = {v: k for k, v in node2id.items()}
         else:
-            id2node = {v: k for k, v in node2id.iteritems()}
+            id2node = {v: k for k, v in node2id.items()}
 
         # generate edges
         e = 0
