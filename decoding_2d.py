@@ -346,6 +346,9 @@ class Sim2D(object):
         else:
             id2node = {v: k for k, v in node2id.items()}
 
+        if (self.boundary_conditions == 'open') & (dist_func is None):
+            dist_func = lambda a, b: toric_dist(a, b, None)
+
         # generate edges
         e = 0
         for v1, v2 in it.combinations(syndrome, 2):
@@ -361,7 +364,7 @@ class Sim2D(object):
 
             e += 1
 
-        if self.boundary_conditions == 'rotated':
+        if self.boundary_conditions in ['rotated', 'open']:
             close_pts = {}
             for s in syndrome:
                 v1 = s
@@ -496,7 +499,7 @@ class Sim2D(object):
                 x_graph, z_graph = mw.path_sum_graphs(self, err, beliefs=blfs)
                 x_corr = self.correction(x_graph, 'Z')
                 z_corr = self.correction(z_graph, 'X')
-            else:            
+            else:
                 if self.useBlossom:
                     # without networkx interface (only with blossom)
                     x_corr = self.graphAndCorrection(x_synd, 'Z', dist_func=dist_func)

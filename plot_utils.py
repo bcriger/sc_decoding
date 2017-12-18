@@ -7,7 +7,7 @@ import pickle as pkl
 import seaborn as sb
 
 #-------------------------NetworkX Graph Drawing----------------------#
-def nx_draw(g, edge_color=False):
+def lattice_draw(g, edge_color=False):
     pos = {v: np.array(v) for v in g.nodes()}
     labels = {v: str(v) for v in g.nodes()}
     try:
@@ -16,6 +16,25 @@ def nx_draw(g, edge_color=False):
         weights = [2 for e in g.edges()]
     nx.draw(g, pos, width=weights)
     nx.draw_networkx_labels(g, pos, labels)
+
+
+def err_graph_draw(g, sim):
+    pos = lattice_layout(g, sim)
+    pos = {k: [v[0] + 0.2 * np.random.rand(), v[1] + 0.2 * np.random.rand()] for k, v in pos.items()}
+    e_lbls = {e[:-1] : e[-1]['weight'] for e in g.edges(data=True)}
+    nx.draw(g, pos)
+    nx.draw_networkx_labels(g, pos)
+    nx.draw_networkx_edge_labels(g, pos, e_lbls, label_pos=0.25)
+    
+
+def lattice_layout(g, sim):
+    pos = dict()
+    for vertex in g.node:
+        if type(vertex) is tuple:
+            pos[vertex] = list(g[vertex][vertex[0]]['close_pt'])
+        else:
+            pos[vertex] = list(sim.layout.map.inv[vertex])
+    return pos
 
 #---------------------------------------------------------------------#
 
