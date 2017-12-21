@@ -139,6 +139,9 @@ class Sim2D(object):
         NetworkX does). We use negative edge weights to make this
         happen.
         """
+        if shadow:
+            raise NotImplementedError("I never got around to shadowing.")
+        
         if self.boundary_conditions in ['closed', 'open']:
             l = None if self.boundary_conditions == 'open' else self.dx
             if dist_func is None:

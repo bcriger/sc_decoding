@@ -530,7 +530,7 @@ def mwpm(verts, metric, bdy_info, use_blossom, ffi=None, blossom=None):
         for u,v in graph.edges():
             uid = int(node2id[u])
             vid = int(node2id[v])
-            wt = -int( graph[u][v]['weight'])
+            wt = -int( graph[u][v]['weight']) # Blossom V uses positive edge weights
             # print('weight of edge[{0}][{1}] = {2}'.format( uid, vid, wt) )
             edges[e].uid = uid; edges[e].vid = vid; edges[e].weight = wt
             e += 1
