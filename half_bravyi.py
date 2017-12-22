@@ -5,8 +5,9 @@ import operator as op
 from circuit_metric.layout_utils import *
 import sparse_pauli as sp
 
-e_shifts = [shift for shift in mw.big_shifts if shift[0] == 2]
-n_shifts = [shift for shift in mw.big_shifts if shift[1] == 2]
+# e_shifts = [shift for shift in mw.big_shifts if shift[0] == 2]
+# n_shifts = [shift for shift in mw.big_shifts if shift[1] == 2]
+e_shifts, n_shifts = None, None # super-temporary, I promise . . .
 
 def bravyi_weight_graphs(sim, syndromes, cosets):
     """
