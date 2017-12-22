@@ -1,3 +1,4 @@
+from circuit_metric.SCLayoutClass import SCLayout, PCLayout
 import decoding_2d as dc
 import itertools as it
 #from line_profiler import LineProfiler
@@ -12,8 +13,11 @@ import sparse_pauli as sp
 from functools import reduce
 from timeit import default_timer as timer
 
-shifts = [(1, -1), (-1, -1), (1, 1), (-1, 1)] # data to ancilla
-big_shifts = [(2, -2), (-2, -2), (2, 2), (-2, 2)] # ancilla to ancilla
+# shifts = [(1, -1), (-1, -1), (1, 1), (-1, 1)] # data to ancilla
+big_shifts = {
+                SCLayout: [(2, -2), (-2, -2), (2, 2), (-2, 2)],
+                PCLayout: [(2, 0), (-2, 0), (0, 2), (0, -2)]
+                } # ancilla to ancilla
 
 #-----------------stuff that works for square bboxes------------------#
 
@@ -167,8 +171,8 @@ def record_beliefs(beliefs, g, layout, stab_type):
     the edges of g as 'p_edge', so that we can run 'path_prob' later. 
     """
     for edge in list(g.edges()):
-        q = tuple((c0 + c1) / 2
-                    for c0, c1 in zip(edge[0], edge[1])) # intdiv
+        q = tuple(int((c0 + c1) / 2)
+                    for c0, c1 in zip(edge[0], edge[1]))
         
         p = p_anticom(beliefs[layout.map[q]], stab_type)
         
@@ -300,7 +304,10 @@ def anc_graph(layout, stab_type, beliefs=None, missing_tiles=False):
 
     g = nx.Graph()
     for pr in it.product(ancs, repeat=2):
-        if (pr[1][0] - pr[0][0], pr[1][1] - pr[0][1]) in big_shifts:
+        shift = (pr[1][0] - pr[0][0], pr[1][1] - pr[0][1])
+        shift_is_good = shift in big_shifts[type(layout)]
+        pair_has_edge = (pr[0] not in bdy) or (pr[1] not in bdy)
+        if pair_has_edge and shift_is_good:
             g.add_edge(*pr)
     
     if beliefs is not None:
@@ -318,8 +325,8 @@ def has_straight_path(crd_0, crd_1):
     For a coordinate pair, returns True if the path between them is
     straight on a rotated lattice. 
     """
-    n_steps_x = abs(crd_1[0] - crd_0[0]) / 2 # intdiv
-    n_steps_y = abs(crd_1[1] - crd_0[1]) / 2 # intdiv
+    n_steps_x = int(abs(crd_1[0] - crd_0[0]) / 2)
+    n_steps_y = int(abs(crd_1[1] - crd_0[1]) / 2)
 
     return n_steps_x == n_steps_y
 
@@ -337,7 +344,7 @@ def len_mat(graph, vs):
 
 # profile = LineProfiler()
 # @profile
-def all_pairs_multipath_sum(graph, d, pair_lst=None):
+def all_pairs_multipath_sum(graph, d, pair_lst=None, dist_func=None):
     """
     Inspired by Floyd-Warshall, we iteratively calculate the effective 
     path length between all pairs of X or Z syndromes.
@@ -354,7 +361,10 @@ def all_pairs_multipath_sum(graph, d, pair_lst=None):
     vs = list(sorted(graph.nodes()))
     es = list(sorted(graph.edges()))
     
-    length = np.array([[ c_pair_dist(vs[r], vs[c])
+    if dist_func is None:
+        dist_func = c_pair_dist
+    
+    length = np.array([[ dist_func(vs[r], vs[c])
                         for r in range(len(vs))]
                         for c in range(len(vs))])
 
@@ -367,7 +377,7 @@ def all_pairs_multipath_sum(graph, d, pair_lst=None):
     v_dx = {v: dx for dx, v in enumerate(vs)}
     
     if pair_lst is None:
-        sorted_prs = sorted([(c_pair_dist(c0, c1), c0, c1)
+        sorted_prs = sorted([(dist_func(c0, c1), c0, c1)
                                 for c0, c1 in it.product(vs, repeat=2)])
         sorted_prs = filter(lambda tpl: tpl[0] >= 2, sorted_prs)
     else:
@@ -415,6 +425,15 @@ def path_sum_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
     """
     layout = sim.layout
 
+    #find dist_func so we can get a really close point
+    if sim.boundary_conditions == 'open':
+        dist_func = lambda pt_0, pt_1: dc.toric_dist(pt_0, pt_1, None)
+    elif sim.boundary_conditions == 'rotated':
+        dist_func = c_pair_dist
+    else:
+        raise NotImplementedError("finding close points"
+            " requires a distance function")
+
     if beliefs is None:
         blfs = input_beliefs(sim, err, bp_rounds)
     else:
@@ -425,8 +444,10 @@ def path_sum_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
     x_anc_graph = anc_graph(layout, 'X', blfs, missing_tiles=True)
     z_anc_graph = anc_graph(layout, 'Z', blfs, missing_tiles=True)
 
-    x_path_sum, x_vs = all_pairs_multipath_sum(x_anc_graph, layout.dx)
-    z_path_sum, z_vs = all_pairs_multipath_sum(z_anc_graph, layout.dx)
+    x_path_sum, x_vs = all_pairs_multipath_sum(x_anc_graph, layout.dx,
+                                                dist_func=dist_func)
+    z_path_sum, z_vs = all_pairs_multipath_sum(z_anc_graph, layout.dx,
+                                                dist_func=dist_func)
 
     x_bdy_1 = layout.boundary['x_left']
     x_bdy_2 = layout.boundary['x_right']
@@ -448,11 +469,13 @@ def path_sum_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
             dx = vs.index(crd)
             w_1 = sum([path_sum[dx, _] for _ in bdx_1])
             w_2 = sum([path_sum[dx, _] for _ in bdx_2])
-            g.add_edge(pt, (pt,'b'))
+            g.add_edge(pt, (pt, 'b'))
             if w_1 > w_2:
-                wt, c_pt = -np.log(w_1), bdy_1[0]
+                c_pt = min(bdy_1, key=lambda pt: dist_func(crd, pt))
+                wt = -np.log(w_1)
             elif w_2 > w_1:
-                wt, c_pt = -np.log(w_2), bdy_2[0]
+                c_pt = min(bdy_2, key=lambda pt: dist_func(crd, pt))
+                wt = -np.log(w_2)
             else:
                 raise ValueError("Ambiguous edge weight (nan?)")
             g[pt][(pt, 'b')].update({'weight': -wt, 'close_pt': c_pt})
@@ -968,6 +991,8 @@ def bdy_p_v_mat(crd, bdy_verts, bulk_verts):
 
     return digraph_to_mat(g, vertices)
 
+'''
+doesn't work because of big_shifts
 def matching_p_mat(match_lst, bdy_verts, bulk_verts, mdl, new_err):
     """
     lil wrapper for what's above, we first sum up all the p_v matrices
@@ -999,6 +1024,7 @@ def matching_p_mat(match_lst, bdy_verts, bulk_verts, mdl, new_err):
             p_mat[r, c] = p_v_prime(p_mat[r, c], mdl, new_err)
 
     return p_mat - np.diag(np.diag(p_mat)) #no self-loops
+'''
 
 def nn_edge_switch(crds):
     """

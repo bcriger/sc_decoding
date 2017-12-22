@@ -648,7 +648,7 @@ def toric_dist(crd_0, crd_1, l):
     if l:
         return (min(dx, 2 * l - dx) + min(dy, 2 * l - dy)) / 2 # intdiv
     else:
-        return dx + dy
+        return (dx + dy) / 2 #intdiv
 
 def diag_pth(crd_0, crd_1):
     """
