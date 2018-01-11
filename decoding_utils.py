@@ -25,10 +25,12 @@ blossom_path = dir_path + "/blossom5/libblossom.so"
 
 
 cdef_str_check_funcs = """
-            int check0( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
-            int check1( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
-            int check2( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
-            int check3( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
+            int check_xx( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
+            int check_xxx( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
+            int check_xxxx( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
+            int check_zz( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
+            int check_zzz( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
+            int check_zzzz( float cmcq[4][4], float cmqc[4][4], int mcq_len, int sprt_len, int synd);
             int normalize( float cmcq[4][4], int mcq_len, int sprt_len);
             int pair_dist( int crd_0[2], int crd_1[2]);
             """

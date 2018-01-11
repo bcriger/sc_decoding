@@ -413,7 +413,7 @@ def one_sub_pairs(pair, vs, graph):
     """
     pass
 
-def path_sum_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
+def path_sum_graphs(sim, err, bp_rounds=None, precision=None, beliefs=None):
     """
     Create a pair of graphs to use in independent X/Z matching by:
      - Running BP on the Tanner graph
@@ -478,25 +478,32 @@ def path_sum_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
                 wt = -np.log(w_2)
             else:
                 raise ValueError("Ambiguous edge weight (nan?)")
+            
+            if precision is not None:
+                wt = int(wt * 10**precision)
+
             g[pt][(pt, 'b')].update({'weight': -wt, 'close_pt': c_pt})
         
         # boundary-boundary edges
         for p, q in it.combinations(synd, r=2):
             # boundary-boundary
-            g.add_edge((p, 'b'), (q, 'b'), weight=0.)
+            zero = 0. if precision is None else 0
+            g.add_edge((p, 'b'), (q, 'b'), weight=zero)
         
         # bulk
         for p, q in it.combinations(synd, r=2):
             pdx = vs.index(layout.map.inv[p])
             qdx = vs.index(layout.map.inv[q])
             wt = -np.log(path_sum[pdx, qdx])
+            if precision is not None:
+                wt = int(wt * 10**precision)
             g.add_edge(p, q, weight=-wt)
 
         out_graphs.append(g)
     
     return out_graphs
 
-def bp_graphs(sim, err, bp_rounds=None, precision=4, beliefs=None):
+def bp_graphs(sim, err, bp_rounds=None, precision=None, beliefs=None):
     """
     Create a pair of graphs to use in independent x/z matching by:
      - running BP on the Tanner graph
@@ -665,8 +672,8 @@ def check_to_qubit(g):
             j = 0
             for val in g.node[q]['mqc'][v]:
                 cmqc[i][j] = val
-                j = j + 1
-            i = i + 1
+                j += 1
+            i += 1
 
         mqc_len = 4 #len(mqc[0])
         mcq_len = mqc_len
@@ -675,25 +682,43 @@ def check_to_qubit(g):
         # factor sum to avoid excess multiplications
         if check[0] == 'XXXX':
             # call CLIB
-            retVal = check_funcs_lib.check0(cmcq, cmqc, mcq_len, sprt_len, synd)
+            retVal = check_funcs_lib.check_xxxx(cmcq, cmqc, mcq_len, sprt_len, synd)
 
             # get the normalized results back
-            for i in range(mcq_len):
+            for i in range(sprt_len):
                 for j in range(mcq_len):
                     mcq[i][j] = cmcq[i][j]
 
         elif check[0] == 'ZZZZ':
             # call CLIB
-            retVal = check_funcs_lib.check1(cmcq, cmqc, mcq_len, sprt_len, synd)
+            retVal = check_funcs_lib.check_zzzz(cmcq, cmqc, mcq_len, sprt_len, synd)
 
             # get the normalized results back
-            for i in range(mcq_len):
+            for i in range(sprt_len):
+                for j in range(mcq_len):
+                    mcq[i][j] = cmcq[i][j]
+        
+        elif check[0] == 'XXX':
+            # call CLIB
+            retVal = check_funcs_lib.check_xxx(cmcq, cmqc, mcq_len, sprt_len, synd)
+
+            # get the normalized results back
+            for i in range(sprt_len):
+                for j in range(mcq_len):
+                    mcq[i][j] = cmcq[i][j]
+
+        elif check[0] == 'ZZZ':
+            # call CLIB
+            retVal = check_funcs_lib.check_zzz(cmcq, cmqc, mcq_len, sprt_len, synd)
+
+            # get the normalized results back
+            for i in range(sprt_len):
                 for j in range(mcq_len):
                     mcq[i][j] = cmcq[i][j]
 
         elif check[0] == 'XX':
             # call CLIB
-            retVal = check_funcs_lib.check2(cmcq, cmqc, mcq_len, sprt_len, synd)
+            retVal = check_funcs_lib.check_xx(cmcq, cmqc, mcq_len, sprt_len, synd)
 
             # get the normalized results back
             for i in range(sprt_len):
@@ -702,7 +727,7 @@ def check_to_qubit(g):
 
         elif check[0] == 'ZZ':
             # call CLIB
-            retVal = check_funcs_lib.check3(cmcq, cmqc, mcq_len, sprt_len, synd)
+            retVal = check_funcs_lib.check_zz(cmcq, cmqc, mcq_len, sprt_len, synd)
 
             # get the normalized results back
             for i in range(sprt_len):
