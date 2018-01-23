@@ -1,7 +1,7 @@
 from circuit_metric.SCLayoutClass import SCLayout, PCLayout
 import decoding_2d as dc
 import itertools as it
-#from line_profiler import LineProfiler
+# from line_profiler import LineProfiler
 from math import fsum
 import networkx as nx
 import numpy as np
@@ -18,6 +18,16 @@ big_shifts = {
                 SCLayout: [(2, -2), (-2, -2), (2, 2), (-2, 2)],
                 PCLayout: [(2, 0), (-2, 0), (0, 2), (0, -2)]
                 } # ancilla to ancilla
+
+#---------------------importing function from julia-------------------#
+
+import julia
+j = julia.Julia()
+j.eval('include("fast_multipath.jl");')
+j.eval('using fast_multipath;')
+j.add_module_functions("fast_multipath")
+
+#---------------------------------------------------------------------#
 
 #-----------------stuff that works for square bboxes------------------#
 
@@ -342,8 +352,111 @@ def len_mat(graph, vs):
 
     return length
 
+def dist_array(vs, dist_func=None):
+    """
+    To determine which edges over which to perform the weighted sum,
+    we have to know which are adjacent. 
+    Here, I write out the distance between every pair of vertices so
+    that can happen. 
+    """
+    if dist_func is None:
+        dist_func = c_pair_dist
+    
+    return np.array([[ dist_func(vs[r], vs[c])
+                        for r in range(len(vs))]
+                        for c in range(len(vs))])
+
 # profile = LineProfiler()
 # @profile
+def multipath_calc(path_sum, sorted_prs, length, v_dx, graph):
+    """
+    Does the heavy lifting behind the multi-path sum, figuring out
+    which pairs to add up in order to evaluate the path length between
+    each pair.  
+    """
+    r_nbs = np.zeros((2,), dtype=np.float_)
+    c_nbs = np.zeros((2,), dtype=np.float_)
+    for elem in sorted_prs:
+        l, c_0, c_1 = elem
+        r, c = v_dx[c_0], v_dx[c_1]
+        nbrs = [v_dx[v] for v in graph.adj[c_1] if length[r, v_dx[v]] == l - 1]
+        
+        if len(nbrs) == 1:
+            path_sum[r, c] = path_sum[r, nbrs[0]] * path_sum[nbrs[0], c]
+        elif len(nbrs) == 2:
+            path_sum[r, c] = path_sum[r, nbrs[0]] * path_sum[nbrs[0], c] + path_sum[r, nbrs[1]] * path_sum[nbrs[1], c]
+
+        path_sum[c, r] = path_sum[r, c]
+
+    return path_sum
+
+def multipath_calc_jl_wrap(path_sum, sorted_prs, length, v_dx, graph):
+    """
+    Messes down the python-idiomatic arguments into arrays so they can
+    be passed to j.multipath_calc_b, calls the julia subroutine, and
+    returns the result.
+    """
+
+    sorted_prs = list(sorted_prs)
+
+    sorted_prs_arr = np.zeros((len(sorted_prs), 3), np.int_)
+    
+    for dx, elem in enumerate(sorted_prs):
+        sorted_prs_arr[dx, :] = elem[0], v_dx[elem[1]], v_dx[elem[2]]
+
+    graph_adj = -np.ones((len(v_dx), 4), dtype=np.int_)
+    for row_dx in range(len(sorted_prs)):
+        c_1 = sorted_prs[row_dx][2]
+        adj_data = [v_dx[_] for _ in graph.adj[c_1]]
+        graph_adj[v_dx[c_1], 0 : len(adj_data)] = adj_data 
+
+    # j.multipath_calc_b(path_sum, sorted_prs_arr, length, graph_adj)
+    
+    # C requires 1D arrays
+    path_sum_shape = np.shape(path_sum)
+    path_sum_prod = np.product(path_sum_shape)
+    
+    pairs_shape = np.shape(sorted_prs_arr)
+    pairs_prod = np.product(pairs_shape)
+
+    graph_shape = np.shape(graph_adj)
+    graph_prod = np.product(graph_shape)
+
+    path_sum_1d = check_funcs_ffi.new('double[]', path_sum_prod)
+    ps_data = np.ndarray.flatten(np.array(path_sum))
+
+    length_1d = check_funcs_ffi.new('int[]', path_sum_prod)
+    l_data = np.ndarray.flatten(length)
+
+    for dx in range(path_sum_prod):
+        path_sum_1d[dx] = ps_data[dx]
+        length_1d[dx] = l_data[dx]
+
+
+    sorted_prs_arr_1d = check_funcs_ffi.new('int[]', pairs_prod)
+    pairs_data = np.ndarray.flatten(sorted_prs_arr)
+    for dx in range(pairs_prod):
+        sorted_prs_arr_1d[dx] = pairs_data[dx]
+    
+    
+    graph_adj_1d = check_funcs_ffi.new('int[]', graph_prod)
+    g_data = np.ndarray.flatten(graph_adj)
+    for dx in range(graph_prod):
+        graph_adj_1d[dx] = g_data[dx]
+    
+    num_prs, num_verts = pairs_shape[0], graph_shape[0]
+
+    # raise ValueError("Debug here")
+    check_funcs_lib.calc_path_sum(path_sum_1d, sorted_prs_arr_1d,
+                                            length_1d, graph_adj_1d,
+                                            num_prs, num_verts)
+    # return path_sum
+    for dx in range(path_sum_prod):
+        ps_data[dx] = path_sum_1d[dx]
+
+    # raise RuntimeError("debug")
+    return np.reshape(ps_data, path_sum_shape)
+
 def all_pairs_multipath_sum(graph, d, pair_lst=None, dist_func=None):
     """
     Inspired by Floyd-Warshall, we iteratively calculate the effective 
@@ -354,6 +467,9 @@ def all_pairs_multipath_sum(graph, d, pair_lst=None, dist_func=None):
     reduced by one.
     """
 
+    if dist_func is None:
+        dist_func = c_pair_dist
+
     # TODO Split this up into meaningful sub-functions
 
     # We begin by finding all minimum path lengths so that we can sort
@@ -361,35 +477,25 @@ def all_pairs_multipath_sum(graph, d, pair_lst=None, dist_func=None):
     vs = list(sorted(graph.nodes()))
     es = list(sorted(graph.edges()))
     
-    if dist_func is None:
-        dist_func = c_pair_dist
-    
-    length = np.array([[ dist_func(vs[r], vs[c])
-                        for r in range(len(vs))]
-                        for c in range(len(vs))])
-
-    # possible_lengths = range(2, d)
+    length = dist_array(vs, dist_func)
     
     adj_mat = nx.to_numpy_matrix(graph, nodelist=vs)
-    path_sum = adj_mat.copy()
     
     enum_vs = list(enumerate(vs))
     v_dx = {v: dx for dx, v in enumerate(vs)}
-    
+
     if pair_lst is None:
         sorted_prs = sorted([(dist_func(c0, c1), c0, c1)
                                 for c0, c1 in it.product(vs, repeat=2)])
-        sorted_prs = filter(lambda tpl: tpl[0] >= 2, sorted_prs)
+        sorted_prs = list(filter(lambda tpl: tpl[0] >= 2, sorted_prs))
     else:
-        sorted_prs = all_sub_pairs(pair_lst, vs, graph)
+        sorted_prs = list(all_sub_pairs(pair_lst, vs, graph))
     
-    for elem in sorted_prs:
-        l, c_0, c_1 = elem
-        r, c = v_dx[c_0], v_dx[c_1]
-        nbrs = [v_dx[v] for v in graph.adj[c_1] if length[r, v_dx[v]] == l - 1]
-        path_sum[r, c] = sum([path_sum[r, dx] * path_sum[dx, c] for dx in nbrs])
-        path_sum[c, r] = path_sum[r, c]
-
+    # path_sum = multipath_calc(adj_mat.copy(), sorted_prs, length, v_dx, graph)
+    path_sum = multipath_calc_jl_wrap(adj_mat.copy(), sorted_prs, length, v_dx, graph)
+    # path_sum_test = multipath_calc(adj_mat.copy(), sorted_prs, length, v_dx, graph)
+    # print(0.5 * np.nanmax(np.abs((path_sum - path_sum_test) / (path_sum + path_sum_test))))
+    # raise RuntimeError("debug")
     return path_sum, vs
 
 def all_sub_pairs(pair_lst, vs, graph):

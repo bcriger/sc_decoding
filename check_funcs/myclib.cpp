@@ -222,6 +222,57 @@ extern "C" int pair_dist(int crd_0[2], int crd_1[2]){
     return (abs(d_x + d_y) + abs(d_x - d_y)) / 4; //intdiv
 }
 
+extern "C" int elem_i(int *mat, int r, int c, int n_cols){
+    // printf("r * n_cols + c = %d \n", r * n_cols + c);
+    return mat[r * n_cols + c];
+}
+
+extern "C" int elem_f(float *mat, int r, int c, int n_cols){
+    return mat[r * n_cols + c];
+}
+
+extern "C" int calc_path_sum(double path_sum[], int sorted_prs[],
+                            int length[], int graph_adj[],
+                            int num_prs, int num_verts){
+    
+    /*
+        Fast C version of matched_weights.py's `multipath_calc`, since
+        direct array manipulation was taking most of the required time.
+
+        The central idea is to begin with a |V|-by-|V| adjacency matrix
+        and fill out the rest of the elements with weighted path sums. 
+    */
+    int l = 0, r = 0, c = 0, v = 0;
+
+    //int num_prs = sizeof(sorted_prs) / sizeof(sorted_prs[0]);
+    //for (size_t i = 0; i < 4 * num_verts; ++i)
+    //    printf("%d \n", graph_adj[i]);
+
+    for (int pr_dx = 0; pr_dx < num_prs; ++pr_dx)
+    {
+        // printf("get l\n");
+        l = elem_i(sorted_prs, pr_dx, 0, 3);
+        // printf("get r\n");
+        r = elem_i(sorted_prs, pr_dx, 1, 3);
+        // printf("get c\n");
+        c = elem_i(sorted_prs, pr_dx, 2, 3);
+
+        for (int nb_dx = 0; nb_dx < 4; ++nb_dx)
+        {
+            // printf("get v, c = %d \n", c);
+            v = elem_i(graph_adj, c, nb_dx, 4);
+            if (v != -1){ 
+                // printf("get length elem, v = %d \n", v);
+                if(elem_i(length, r, v, num_verts) == l - 1){
+                // printf("get path_sum\n");
+                path_sum[r * num_verts + c] += path_sum[r * num_verts + v] * path_sum[v * num_verts + c];
+            }}
+        }
+    }
+    
+    return 0; //subroutine
+}
+
 // extern "C" int Clean()
 // {
 //  // cout << "Cleaned-up" << endl;
