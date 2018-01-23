@@ -84,9 +84,9 @@ def run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type='iidxz',
                 # dist_func = fancy_dist(dist, err, bc=bc)
                 # dist_func = entropic_dist(dist, err)
                 if bc == 'open':
-                    current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
+                    current_sim = dc2.Sim2D(dist, dist, err, useBlossom=True, boundary_conditions=bc)
                 else:
-                    current_sim = dc2.Sim2D(dist, dist, err, useBlossom=False, boundary_conditions=bc)
+                    current_sim = dc2.Sim2D(dist, dist, err, useBlossom=True, boundary_conditions=bc)
             elif sim_type == 'pq':
                 current_sim = dc3.Sim3D(dist, dist, ('pq', err, err))
             elif sim_type == 'circ':
@@ -122,7 +122,7 @@ if __name__ == '__main__':
     flnm = argv[6]
     sim_type = argv[7] if len(argv) > 7 else 'iidxz'
     bc = 'open'
-    bp = False
+    bp = True
     run_batch(err_lo, err_hi, n_points, dists, n_trials, flnm, sim_type, bc, bp)
 
 #---------------------------------------------------------------------#
