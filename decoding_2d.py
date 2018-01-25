@@ -500,7 +500,8 @@ class Sim2D(object):
                 # x_corr, z_corr = bp_correction(blfs)
                 # if self.syndromes(x_corr * z_corr) != self.syndromes(err):
                 # x_graph, z_graph = mw.bp_graphs(self, err, beliefs=blfs)
-                x_graph, z_graph = mw.path_sum_graphs(self, err, beliefs=blfs)
+                prcsn = 4 if self.useBlossom else None
+                x_graph, z_graph = mw.path_sum_graphs(self, err, beliefs=blfs, precision=prcsn)
                 x_corr = self.correction(x_graph, 'Z')
                 z_corr = self.correction(z_graph, 'X')
             else:
@@ -646,9 +647,9 @@ def toric_dist(crd_0, crd_1, l):
     """
     dx, dy = abs(crd_0[0] - crd_1[0]), abs(crd_0[1] - crd_1[1])
     if l:
-        return (min(dx, 2 * l - dx) + min(dy, 2 * l - dy)) / 2 # intdiv
+        return int((min(dx, 2 * l - dx) + min(dy, 2 * l - dy)) / 2) # intdiv
     else:
-        return (dx + dy) / 2 #intdiv
+        return int((dx + dy) / 2) #intdiv
 
 def diag_pth(crd_0, crd_1):
     """
