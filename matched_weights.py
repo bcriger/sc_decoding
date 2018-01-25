@@ -21,11 +21,11 @@ big_shifts = {
 
 #---------------------importing function from julia-------------------#
 
-import julia
-j = julia.Julia()
-j.eval('include("fast_multipath.jl");')
-j.eval('using fast_multipath;')
-j.add_module_functions("fast_multipath")
+# import julia
+# j = julia.Julia()
+# j.eval('include("fast_multipath.jl");')
+# j.eval('using fast_multipath;')
+# j.add_module_functions("fast_multipath")
 
 #---------------------------------------------------------------------#
 
